@@ -1,79 +1,81 @@
 <div align="center">
 
-<img src="docs/screenshots/mapa-detalhado.png" alt="Mapa de arquitetura no modo detalhado, com logos" width="100%">
+<img src="docs/screenshots/mapa-detalhado.png" alt="Architecture map in detailed mode, with logos" width="100%">
 
 # system-design-skill
 
-**O mapa de arquitetura do seu projeto, vivo e revisável, para você e para a sua IA.**
+**Your project's architecture map, live and reviewable, for you and your AI.**
 
 ![Python 3](https://img.shields.io/badge/Python-3-blue)
-![Sem dependências](https://img.shields.io/badge/depend%C3%AAncias-nenhuma-lightgrey)
-[![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)](LICENSE)
+![No dependencies](https://img.shields.io/badge/dependencies-none-lightgrey)
+[![License MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-[Capturas](#capturas) • [Instalação](#instalação) • [Uso](#uso) • [O que o init altera](#o-que-o-init-altera-no-projeto) • [Confidencialidade](#confidencialidade) • [O que sai da sua máquina](#o-que-sai-da-sua-máquina)
+[Screenshots](#screenshots) • [Install](#install) • [Usage](#usage) • [What init changes](#what-init-changes-in-your-project) • [Confidentiality](#confidentiality) • [What leaves your machine](#what-leaves-your-machine)
+
+English • <a href="README.pt-BR.md">Português</a>
 
 </div>
 
-O system-design é uma skill para agentes de IA. Ela guarda a arquitetura do projeto em `.system-design/` (componentes, conexões, limites de capacidade, recomendações e vulnerabilidades das dependências) e mostra tudo numa página local no estilo n8n.
+system-design is a skill for AI agents. It keeps the project's architecture in `.system-design/` (components, connections, capacity limits, recommendations and dependency vulnerabilities) and shows everything on a local n8n-style page.
 
-A IA lê um resumo do mapa antes de mexer em backend. Quando uma tarefa muda o fluxo (novo banco, fila, API externa, deploy), ela propõe a mudança, você aprova na página e só então ela implementa, marcando o progresso em tempo real.
+The AI reads a summary of the map before touching the backend. When a task changes the flow (a new database, queue, external API or deploy), it proposes the change, you approve it on the page, and only then does it implement it, reporting progress in real time.
 
-## Capturas
+## Screenshots
 
-O mapa mostra os componentes e as conexões. O botão do canto inferior alterna entre o modo simplificado (ícones por tipo) e o detalhado (logos e tecnologias). O tema claro e o escuro seguem o sistema.
+The map shows components and connections. The button in the bottom-left corner switches between simplified mode (icons by type) and detailed mode (logos and technologies). The light and dark themes follow the system.
 
 <p align="center">
-  <img src="docs/screenshots/mapa-simplificado.png" alt="Mapa no modo simplificado" width="49%">
-  <img src="docs/screenshots/mapa-claro.png" alt="Mapa no tema claro" width="49%">
+  <img src="docs/screenshots/mapa-simplificado.png" alt="Map in simplified mode" width="49%">
+  <img src="docs/screenshots/mapa-claro.png" alt="Map in the light theme" width="49%">
 </p>
 
-A aba **Com recomendações** desenha a arquitetura sugerida sobre a atual: o que entra fica tracejado em roxo e o que sai, em vermelho.
+The **Com recomendações** (With recommendations) tab draws the suggested architecture over the current one: what comes in is dashed purple and what goes out is dashed red.
 
 <p align="center">
-  <img src="docs/screenshots/recomendacoes-mapa.png" alt="Mapa com recomendações, modo detalhado" width="100%">
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/recomendacoes-mapa-simplificado.png" alt="Mapa com recomendações, modo simplificado" width="49%">
-  <img src="docs/screenshots/recomendacoes-lista.png" alt="Lista de recomendações com prioridade, esforço e custo" width="49%">
-</p>
-
-Abaixo do mapa ficam as listas de limitações e de vulnerabilidades das dependências. Clicar numa limitação destaca o componente afetado no mapa.
-
-<p align="center">
-  <img src="docs/screenshots/limitacoes.png" alt="Lista de limitações por severidade" width="100%">
+  <img src="docs/screenshots/recomendacoes-mapa.png" alt="Map with recommendations, detailed mode" width="100%">
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/cves.png" alt="Lista de CVEs com a versão corrigida" width="100%">
+  <img src="docs/screenshots/recomendacoes-mapa-simplificado.png" alt="Map with recommendations, simplified mode" width="49%">
+  <img src="docs/screenshots/recomendacoes-lista.png" alt="Recommendations list with priority, effort and cost" width="49%">
+</p>
+
+Below the map are the lists of limits and dependency vulnerabilities. Clicking a limit highlights the affected component on the map.
+
+<p align="center">
+  <img src="docs/screenshots/limitacoes.png" alt="Limits list by severity" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/cves.png" alt="CVE list with the fixed version" width="100%">
 </p>
 
 > [!NOTE]
-> Os dados das capturas vêm de [`examples/`](examples) e são fictícios.
+> The screenshot data comes from [`examples/`](examples) and is fictional. The page itself is in Portuguese for now.
 
 > [!NOTE]
-> Projeto independente. A skill usa só a biblioteca padrão do Python 3.
+> Independent project. The skill uses only the Python 3 standard library.
 
-## Instalação
+## Install
 
 ```bash
 npx skills add CarlosAllberto/system-design-skill
 ```
 
-O comando instala a skill nos agentes compatíveis que você usa. O repositório se chama `system-design-skill`, mas a skill instalada se chama `system-design`, nome definido no `SKILL.md`. Requisito: Python 3 (no Windows o comando pode ser `python`).
+The command installs the skill in the compatible agents you use. The repository is called `system-design-skill`, but the installed skill is called `system-design`, the name set in `SKILL.md`. Requirement: Python 3 (on Windows the command may be `python`).
 
-## Uso
+## Usage
 
-Peça ao agente algo como "mapeie o system design deste projeto". A skill tem 4 modos:
+Ask the agent something like "map the system design of this project". The skill has 4 modes:
 
-| Modo | Quando | O que acontece |
+| Mode | When | What happens |
 | --- | --- | --- |
-| 1. Mapear um projeto existente | O projeto já tem código | A IA lê o código, faz todas as perguntas numa rodada só e escreve o `map.json` com nós, conexões, limites e recomendações |
-| 2. Desenhar um backend novo | App novo, sem backend | A arquitetura alvo vira uma proposta com tarefas de implementação |
-| 3. Propor antes de mudar o fluxo | Novo componente, banco, fila, cache, API externa, autenticação ou deploy | A IA registra a proposta e espera você aprovar na aba Atualização |
-| 4. Executar a atualização aprovada | Depois da aprovação | Cada item passa por `waiting`, `in_progress` e `done`; no fim o `finalize` atualiza o mapa |
+| 1. Map an existing project | The project already has code | The AI reads the code, asks all its questions in one round and writes `map.json` with nodes, connections, limits and recommendations |
+| 2. Design a new backend | New app, no backend yet | The target architecture becomes a proposal with implementation tasks |
+| 3. Propose before changing the flow | New component, database, queue, cache, external API, authentication or deploy | The AI registers the proposal and waits for you to approve it in the update tab |
+| 4. Run the approved update | After approval | Each item goes through `waiting`, `in_progress` and `done`; at the end `finalize` updates the map |
 
-Comandos úteis, a partir da raiz do projeto:
+Useful commands, from the project root:
 
 ```bash
 python3 .system-design/sd.py serve --open
@@ -81,46 +83,46 @@ python3 .system-design/sd.py cves
 python3 .system-design/sd.py build
 ```
 
-Um exemplo para testar fica em [`examples/map.example.json`](examples/map.example.json). Para ver a aba de vulnerabilidades, copie também [`examples/cves.example.json`](examples/cves.example.json) para `.system-design/cves.json` (os dados são fictícios) e rode `build`.
+An example to try is in [`examples/map.example.json`](examples/map.example.json). To see the vulnerabilities tab, also copy [`examples/cves.example.json`](examples/cves.example.json) to `.system-design/cves.json` (the data is fictional) and run `build`.
 
-## O que o init altera no projeto
+## What init changes in your project
 
-O `sd.py init` cria a pasta `.system-design/` e mexe só nisto:
+`sd.py init` creates the `.system-design/` folder and touches only this:
 
-- **`AGENTS.md`:** acrescenta um bloco entre `<!-- system-design:start -->` e `<!-- system-design:end -->` com uma linha condicional ("se existir `.system-design/AI-MAP.md`, leia"). O resto do arquivo não é tocado, e rodar o `init` de novo não duplica nada.
-- **`CLAUDE.md`:** só remove o bloco do system-design, se existir. Se o arquivo não importar o `AGENTS.md`, o `init` avisa.
-- **`.gitignore`:** adiciona `.system-design/`.
+- **`AGENTS.md`:** adds a block between `<!-- system-design:start -->` and `<!-- system-design:end -->` with one conditional line ("if `.system-design/AI-MAP.md` exists, read it"). The rest of the file is not touched, and running `init` again duplicates nothing.
+- **`CLAUDE.md`:** only removes the system-design block, if there is one. If the file does not import `AGENTS.md`, `init` warns you.
+- **`.gitignore`:** adds `.system-design/`.
 
-## Confidencialidade
+## Confidentiality
 
-A pasta `.system-design/` descreve a arquitetura, os limites e as vulnerabilidades do projeto. Se vazar, vira um roteiro de ataque.
+The `.system-design/` folder describes the project's architecture, limits and vulnerabilities. If it leaks, it becomes an attack roadmap.
 
-- Não faça commit dela nem cole o conteúdo em issue, PR, chat público ou serviço externo.
-- O `init` põe a pasta no `.gitignore` e avisa se o git já rastreia algum arquivo dela.
-- Para backup, guarde a pasta num lugar privado.
+- Do not commit it or paste its content into an issue, PR, public chat or external service.
+- `init` adds the folder to `.gitignore` and warns you if git already tracks any file in it.
+- For backups, keep the folder somewhere private.
 
-## O que sai da sua máquina
+## What leaves your machine
 
-Só isto:
+Only this:
 
-1. `sd.py cves` envia nomes e versões de pacotes ao [OSV](https://osv.dev).
-2. A página pede ao [Simple Icons](https://simpleicons.org) os logos pelo slug da marca. Para desligar, ponha `"logos": false` em `project` no `map.json`.
-3. A página pede a fonte Inter ao Google Fonts.
+1. `sd.py cves` sends package names and versions to [OSV](https://osv.dev).
+2. The page asks [Simple Icons](https://simpleicons.org) for logos by brand slug. To turn this off, set `"logos": false` in `project` in `map.json`.
+3. The page asks Google Fonts for the Inter font.
 
-Nenhum conteúdo do `map.json` (nomes de projeto, limites, descrições) é enviado a terceiros.
+No content from `map.json` (project names, limits, descriptions) is sent to third parties.
 
-## Estrutura
+## Structure
 
 ```
 system-design-skill/
-├── SKILL.md          Instruções para o agente
-├── scripts/sd.py     CLI do ciclo de vida (propose, approve, set, finalize, cves, serve)
-├── assets/viewer.html Página do mapa
-├── docs/screenshots/ Capturas do README
-├── references/       Esquema do map.json, limites, recomendações, app novo
-└── examples/         Mapa de exemplo
+├── SKILL.md          Instructions for the agent
+├── scripts/sd.py     Lifecycle CLI (propose, approve, set, finalize, cves, serve)
+├── assets/viewer.html Map page
+├── docs/screenshots/ README screenshots
+├── references/       map.json schema, limits, recommendations, new app
+└── examples/         Example map
 ```
 
-## Licença
+## License
 
 [MIT](LICENSE)
