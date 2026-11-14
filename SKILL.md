@@ -1,6 +1,6 @@
 ---
 name: system-design
-description: Planeja e mantém o system design do projeto como um mapa vivo (nós e conexões no estilo n8n, limitações, recomendações de arquitetura e CVEs das dependências) numa página local. Serve para mapear um sistema que já existe e também para desenhar do zero o backend de uma aplicação nova. Use quando o usuário pedir system design, mapa de arquitetura, diagrama de conexões, limites de capacidade, escala, vulnerabilidades das dependências, ou quando for planejar o backend de um app novo. Use também antes de uma tarefa que muda o fluxo (novo serviço, banco, fila, cache, API externa, autenticação, deploy), para propor e obter aprovação no mapa antes de implementar.
+description: Plans and maintains the project's system design as a live map (n8n-style nodes and connections, limits, architecture recommendations and dependency CVEs) on a local page. Use it to map an existing system and to design the backend of a new app from scratch. Use it when the user asks for system design, an architecture map, a connection diagram, capacity limits, scaling or dependency vulnerabilities, when planning the backend of a new app, and before any task that changes the flow (new service, database, queue, cache, external API, authentication, deploy) to propose it and get approval on the map before implementing.
 ---
 
 # System Design
