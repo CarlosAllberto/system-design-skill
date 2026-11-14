@@ -1,0 +1,551 @@
+{
+  "project": {
+    "name": "Loja Exemplo",
+    "description": "Sistema fictício de uma loja virtual, só para demonstrar o mapa.",
+    "hosting": {
+      "provedor": "VPS",
+      "recursos": "2 vCPU, 4 GB de RAM, 40 GB de SSD",
+      "região": "São Paulo"
+    },
+    "logos": true
+  },
+  "version": 1,
+  "nodes": [
+    {
+      "id": "browser",
+      "label": "Navegador",
+      "type": "client",
+      "tech": "Chrome, Safari",
+      "description": "Clientes que compram pelo site.",
+      "host": "Dispositivo do cliente"
+    },
+    {
+      "id": "cdn",
+      "label": "CDN",
+      "type": "cdn",
+      "tech": "Cloudflare",
+      "logo": "cloudflare",
+      "description": "Entrega imagens e arquivos estáticos e filtra tráfego malicioso.",
+      "host": "Serviço gerenciado"
+    },
+    {
+      "id": "web",
+      "label": "Frontend",
+      "type": "frontend",
+      "tech": "Next.js 15",
+      "logo": "nextdotjs",
+      "description": "Vitrine, carrinho e renderização no servidor.",
+      "host": "VPS"
+    },
+    {
+      "id": "api",
+      "label": "API",
+      "type": "api",
+      "tech": "Node.js + Express",
+      "logo": "express",
+      "description": "Catálogo, pedidos, pagamentos e regras de negócio.",
+      "host": "VPS"
+    },
+    {
+      "id": "worker",
+      "label": "Worker de pedidos",
+      "type": "worker",
+      "tech": "Node.js",
+      "logo": "nodedotjs",
+      "description": "Confirma pagamentos, baixa o estoque e envia e-mails fora da requisição.",
+      "host": "VPS"
+    },
+    {
+      "id": "queue",
+      "label": "Fila",
+      "type": "queue",
+      "tech": "RabbitMQ",
+      "logo": "rabbitmq",
+      "description": "Entrega os eventos de pedido ao worker.",
+      "host": "VPS"
+    },
+    {
+      "id": "db",
+      "label": "Banco de dados",
+      "type": "database",
+      "tech": "PostgreSQL 16",
+      "logo": "postgresql",
+      "description": "Produtos, clientes, pedidos e estoque.",
+      "host": "VPS"
+    },
+    {
+      "id": "auth",
+      "label": "Autenticação",
+      "type": "auth",
+      "tech": "Auth0",
+      "logo": "auth0",
+      "description": "Login e sessões dos clientes.",
+      "host": "Serviço gerenciado"
+    },
+    {
+      "id": "payments",
+      "label": "Pagamentos",
+      "type": "external",
+      "tech": "Stripe",
+      "logo": "stripe",
+      "description": "Cobrança por cartão e Pix, com webhooks de confirmação.",
+      "host": "Terceiro"
+    },
+    {
+      "id": "email",
+      "label": "E-mail transacional",
+      "type": "external",
+      "tech": "Resend",
+      "logo": "resend",
+      "description": "Confirmação de pedido e recuperação de senha.",
+      "host": "Terceiro"
+    },
+    {
+      "id": "storage",
+      "label": "Imagens",
+      "type": "storage",
+      "tech": "Amazon S3",
+      "logo": false,
+      "description": "Fotos dos produtos.",
+      "host": "Serviço gerenciado"
+    },
+    {
+      "id": "monitor",
+      "label": "Erros",
+      "type": "monitoring",
+      "tech": "Sentry",
+      "logo": "sentry",
+      "description": "Captura erros do frontend e da API.",
+      "host": "Serviço gerenciado"
+    }
+  ],
+  "edges": [
+    {
+      "from": "browser",
+      "to": "cdn",
+      "label": "HTTPS"
+    },
+    {
+      "from": "cdn",
+      "to": "web",
+      "label": "HTTPS"
+    },
+    {
+      "from": "web",
+      "to": "api",
+      "label": "HTTPS/JSON"
+    },
+    {
+      "from": "web",
+      "to": "auth",
+      "label": "OIDC"
+    },
+    {
+      "from": "api",
+      "to": "auth",
+      "label": "Valida o token"
+    },
+    {
+      "from": "api",
+      "to": "db",
+      "label": "SQL"
+    },
+    {
+      "from": "api",
+      "to": "payments",
+      "label": "Cria cobrança"
+    },
+    {
+      "from": "payments",
+      "to": "api",
+      "label": "Webhook"
+    },
+    {
+      "from": "api",
+      "to": "queue",
+      "label": "Evento de pedido"
+    },
+    {
+      "from": "queue",
+      "to": "worker",
+      "label": "AMQP"
+    },
+    {
+      "from": "worker",
+      "to": "db",
+      "label": "SQL"
+    },
+    {
+      "from": "worker",
+      "to": "email",
+      "label": "API HTTPS"
+    },
+    {
+      "from": "web",
+      "to": "storage",
+      "label": "URL de imagem"
+    },
+    {
+      "from": "api",
+      "to": "monitor",
+      "label": "Erros"
+    }
+  ],
+  "limits": [
+    {
+      "id": "api-ram",
+      "node": "api",
+      "scope": "hosting",
+      "severity": "warn",
+      "label": "Memória",
+      "value": "4 GB compartilhados entre API, worker, fila e Postgres",
+      "note": "Tudo roda na mesma máquina."
+    },
+    {
+      "id": "db-conn",
+      "node": "db",
+      "scope": "app",
+      "severity": "crit",
+      "label": "Conexões simultâneas",
+      "value": "100 conexões, sem pooler",
+      "note": "A API e o worker abrem conexões próprias e o pico da Black Friday passa disso."
+    },
+    {
+      "id": "db-disk",
+      "node": "db",
+      "scope": "hosting",
+      "severity": "info",
+      "label": "Disco",
+      "value": "40 GB de SSD, 12 GB usados"
+    },
+    {
+      "id": "auth-mau",
+      "node": "auth",
+      "scope": "service",
+      "severity": "info",
+      "label": "Usuários ativos por mês",
+      "value": "7.500 no plano gratuito"
+    },
+    {
+      "id": "email-day",
+      "node": "email",
+      "scope": "service",
+      "severity": "warn",
+      "label": "E-mails por dia",
+      "value": "100 no plano gratuito",
+      "note": "Um dia de promoção estoura a cota e os pedidos ficam sem confirmação."
+    },
+    {
+      "id": "db-backup",
+      "node": "db",
+      "scope": "app",
+      "severity": "crit",
+      "label": "Backup",
+      "value": "Sem backup automático",
+      "note": "O dump manual roda só quando alguém lembra. Uma falha do disco perde os pedidos."
+    },
+    {
+      "id": "queue-mem",
+      "node": "queue",
+      "scope": "hosting",
+      "severity": "warn",
+      "label": "Memória da fila",
+      "value": "512 MB antes de bloquear publicações",
+      "note": "Se o worker parar, a fila enche em cerca de 40 minutos de vendas normais."
+    },
+    {
+      "id": "worker-conc",
+      "node": "worker",
+      "scope": "app",
+      "severity": "warn",
+      "label": "Concorrência",
+      "value": "1 processo, 10 pedidos por vez",
+      "note": "Um pedido travado no e-mail atrasa os seguintes."
+    },
+    {
+      "id": "pay-rate",
+      "node": "payments",
+      "scope": "service",
+      "severity": "info",
+      "label": "Limite de requisições",
+      "value": "100 requisições por segundo no modo ativo"
+    },
+    {
+      "id": "cdn-bw",
+      "node": "cdn",
+      "scope": "service",
+      "severity": "info",
+      "label": "Banda",
+      "value": "Sem limite no plano atual, mas 20 GB por mês de imagens grandes"
+    },
+    {
+      "id": "storage-egress",
+      "node": "storage",
+      "scope": "service",
+      "severity": "warn",
+      "label": "Saída de dados",
+      "value": "100 GB por mês grátis",
+      "note": "Imagens sem compressão consomem a cota no primeiro mês de promoção."
+    },
+    {
+      "id": "monitor-events",
+      "node": "monitor",
+      "scope": "service",
+      "severity": "info",
+      "label": "Eventos de erro",
+      "value": "5.000 por mês no plano gratuito"
+    },
+    {
+      "id": "api-payload",
+      "node": "api",
+      "scope": "app",
+      "severity": "info",
+      "label": "Tamanho do corpo da requisição",
+      "value": "1 MB por requisição",
+      "note": "Upload de imagem passa direto pelo S3."
+    },
+    {
+      "id": "web-ssr",
+      "node": "web",
+      "scope": "hosting",
+      "severity": "warn",
+      "label": "Renderização no servidor",
+      "value": "1 processo Node, sem cache de páginas",
+      "note": "Cada visita ao catálogo executa consultas ao banco."
+    }
+  ],
+  "recommendations": {
+    "nodes": [
+      {
+        "id": "pooler",
+        "label": "Pooler de conexões",
+        "type": "service",
+        "tech": "PgBouncer",
+        "why": "Reutiliza conexões e tira o limite de 100 do caminho dos picos de venda.",
+        "priority": "alta",
+        "effort": "baixo",
+        "cost": "baixo",
+        "resolves": [
+          "db-conn"
+        ],
+        "improves": [
+          "db"
+        ]
+      },
+      {
+        "id": "cache",
+        "label": "Cache de leitura",
+        "type": "cache",
+        "tech": "Redis 7",
+        "logo": "redis",
+        "why": "Tira do Postgres as leituras repetidas do catálogo e libera memória e conexões para os pedidos.",
+        "priority": "media",
+        "effort": "baixo",
+        "cost": "baixo",
+        "resolves": [
+          "api-ram"
+        ],
+        "improves": [
+          "db"
+        ]
+      },
+      {
+        "id": "lb",
+        "label": "Load balancer",
+        "type": "loadbalancer",
+        "tech": "Nginx",
+        "logo": "nginx",
+        "why": "Remove o ponto único de falha da API e permite subir uma segunda instância.",
+        "priority": "baixa",
+        "effort": "médio",
+        "cost": "médio",
+        "resolves": [
+          "api-ram"
+        ],
+        "improves": [
+          "api"
+        ]
+      },
+      {
+        "id": "backup",
+        "label": "Backup automático",
+        "type": "storage",
+        "tech": "pgBackRest + S3",
+        "why": "Cópia diária do banco em outro provedor, com teste de restauração mensal.",
+        "priority": "alta",
+        "effort": "baixo",
+        "cost": "baixo",
+        "resolves": [
+          "db-backup"
+        ],
+        "improves": [
+          "db"
+        ]
+      },
+      {
+        "id": "dlq",
+        "label": "Fila de mensagens com falha",
+        "type": "queue",
+        "tech": "RabbitMQ dead-letter",
+        "logo": "rabbitmq",
+        "why": "Pedidos que falham no e-mail vão para uma fila separada e não travam os seguintes.",
+        "priority": "media",
+        "effort": "baixo",
+        "cost": "baixo",
+        "resolves": [
+          "worker-conc"
+        ],
+        "improves": [
+          "queue",
+          "worker"
+        ]
+      },
+      {
+        "id": "page-cache",
+        "label": "Cache de páginas do catálogo",
+        "type": "cache",
+        "tech": "Next.js ISR + CDN",
+        "logo": "nextdotjs",
+        "why": "Páginas do catálogo ficam prontas na CDN e deixam de consultar o banco a cada visita.",
+        "priority": "alta",
+        "effort": "baixo",
+        "cost": "baixo",
+        "resolves": [
+          "web-ssr",
+          "api-ram"
+        ],
+        "improves": [
+          "web",
+          "cdn"
+        ]
+      },
+      {
+        "id": "img-opt",
+        "label": "Otimização de imagens",
+        "type": "service",
+        "tech": "Cloudflare Images",
+        "logo": "cloudflare",
+        "why": "Entrega WebP no tamanho certo e corta o consumo de banda do S3.",
+        "priority": "media",
+        "effort": "baixo",
+        "cost": "médio",
+        "resolves": [
+          "storage-egress",
+          "cdn-bw"
+        ],
+        "improves": [
+          "storage"
+        ]
+      },
+      {
+        "id": "apm",
+        "label": "Métricas e alertas",
+        "type": "monitoring",
+        "tech": "Grafana + Prometheus",
+        "logo": "grafana",
+        "why": "Alerta de fila cheia, conexões do banco e memória antes de virar queda.",
+        "priority": "media",
+        "effort": "médio",
+        "cost": "baixo",
+        "resolves": [
+          "queue-mem",
+          "api-ram"
+        ],
+        "improves": [
+          "monitor"
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "api",
+        "to": "pooler",
+        "label": "SQL"
+      },
+      {
+        "from": "worker",
+        "to": "pooler",
+        "label": "SQL"
+      },
+      {
+        "from": "pooler",
+        "to": "db",
+        "label": "SQL"
+      },
+      {
+        "from": "api",
+        "to": "cache",
+        "label": "TCP 6379"
+      },
+      {
+        "from": "web",
+        "to": "lb",
+        "label": "HTTPS"
+      },
+      {
+        "from": "lb",
+        "to": "api",
+        "label": "HTTPS"
+      },
+      {
+        "from": "backup",
+        "to": "storage",
+        "label": "Dump diário"
+      },
+      {
+        "from": "db",
+        "to": "backup",
+        "label": "pg_dump"
+      },
+      {
+        "from": "queue",
+        "to": "dlq",
+        "label": "Falhas"
+      },
+      {
+        "from": "dlq",
+        "to": "worker",
+        "label": "Reprocessa"
+      },
+      {
+        "from": "cdn",
+        "to": "page-cache",
+        "label": "Cache"
+      },
+      {
+        "from": "page-cache",
+        "to": "web",
+        "label": "Páginas prontas"
+      },
+      {
+        "from": "storage",
+        "to": "img-opt",
+        "label": "Originais"
+      },
+      {
+        "from": "img-opt",
+        "to": "cdn",
+        "label": "WebP"
+      },
+      {
+        "from": "api",
+        "to": "apm",
+        "label": "Métricas"
+      }
+    ],
+    "remove_edges": [
+      {
+        "from": "api",
+        "to": "db"
+      },
+      {
+        "from": "worker",
+        "to": "db"
+      },
+      {
+        "from": "web",
+        "to": "api"
+      }
+    ]
+  }
+}

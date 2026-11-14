@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System Design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#fcfcfd;--panel:#ffffff;--panel2:#f6f6f8;--line:#e6e6e9;--line2:#d6d7db;
+  --ink:#0b0b0c;--ink2:#3c3f44;--muted:#6f737a;--faint:#9a9ea5;
+  --node-bg:#ffffff;--node-line:#d2d3d8;--edge:#b3b6bc;--grid:#dcdde1;--tile:#f2f2f4;--hover:#f1f1f3;
+  --shadow:0 1px 2px rgba(0,0,0,.06),0 4px 14px rgba(0,0,0,.06);
+  --rec:#8b5cf6;--new:#0891b2;--chg:#2563eb;--del:#dc2626;--warn:#ea580c;--crit:#dc2626;--prog:#ca8a04;--done:#059669;--info:#6f737a;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#08090a;--panel:#0f1011;--panel2:#141516;--line:#1f2023;--line2:#2a2c30;
+    --ink:#f7f8f8;--ink2:#d0d6e0;--muted:#8a8f98;--faint:#62666d;
+    --node-bg:#141516;--node-line:#2e3035;--edge:#3f4248;--grid:#1c1d20;--tile:#1e1f22;--hover:#16171a;
+    --shadow:0 1px 2px rgba(0,0,0,.5),0 8px 24px rgba(0,0,0,.4);
+    --rec:#a78bfa;--new:#22d3ee;--chg:#60a5fa;--del:#f87171;--warn:#fb923c;--crit:#f87171;--prog:#facc15;--done:#34d399;--info:#8a8f98;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink2);font:13px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+a{color:inherit}
+code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel2);border:1px solid var(--line);padding:1px 5px;border-radius:4px}
+
+/* cabeçalho */
+.top{position:sticky;top:0;z-index:20;height:52px;display:flex;align-items:center;gap:14px;padding:0 16px;background:var(--bg);border-bottom:1px solid var(--line)}
+.mark{width:24px;height:24px;border-radius:6px;background:var(--ink);color:var(--bg);display:grid;place-items:center;flex:none}
+.pname{font-weight:600;color:var(--ink);font-size:14px;white-space:nowrap}
+.tag,.live{height:28px;display:inline-flex;align-items:center;font-size:12.5px;color:var(--muted);border:1px solid var(--line2);border-radius:6px;padding:0 10px;white-space:nowrap}
+.tabs{display:flex;gap:2px;margin-left:8px;overflow-x:auto}
+.tab{border:0;background:none;height:28px;padding:0 10px;border-radius:6px;color:var(--muted);cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.tab:hover{background:var(--hover);color:var(--ink2)}
+.tab.act{background:var(--panel2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line2)}
+.tab .cnt{font-size:11px;color:var(--muted)}
+.sp{flex:1}
+.live.on{color:var(--done);border-color:color-mix(in srgb,var(--done) 40%,transparent)}
+
+/* mapa */
+.map{position:relative;height:calc(100vh - 52px);min-height:520px;overflow:hidden;border-bottom:1px solid var(--line);background-color:var(--bg);
+  background-image:radial-gradient(var(--grid) 1.2px,transparent 1.2px);background-size:22px 22px;cursor:grab;touch-action:none;user-select:none}
+.map.drag{cursor:grabbing}
+.world{position:absolute;left:0;top:0;transform-origin:0 0}
+.world>svg{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.e{fill:none;stroke:var(--edge);stroke-width:2;stroke-linejoin:round;transition:opacity .15s,stroke .15s}
+.e.hot{stroke:var(--ink)}
+.e.dim{opacity:.18}
+.e.rec{stroke:var(--rec);stroke-dasharray:6 5}
+.e.new{stroke:var(--new)}
+.e.del{stroke:var(--del);stroke-dasharray:6 5;opacity:.75}
+.e.st-waiting{stroke-dasharray:6 5}
+.e.st-in_progress{stroke:var(--prog);stroke-dasharray:6 5;animation:flow 1s linear infinite}
+.e.st-done{stroke:var(--done)}
+@keyframes flow{to{stroke-dashoffset:-22}}
+.el{position:absolute;transform:translate(-50%,-50%);font-size:10.5px;color:var(--muted);background:var(--bg);padding:1px 6px;border-radius:4px;white-space:nowrap;pointer-events:none;transition:opacity .15s;max-width:190px;overflow:hidden;text-overflow:ellipsis}
+.el.dim{opacity:.15}
+.el.hot{color:var(--ink)}
+
+.node{position:absolute;width:88px;height:88px;cursor:pointer;transition:opacity .15s}
+.node .box{position:absolute;inset:0;border-radius:16px;background:var(--node-bg);border:1.5px solid var(--node-line);box-shadow:var(--shadow);display:grid;place-items:center;transition:border-color .15s,box-shadow .15s}
+.node:hover .box{border-color:var(--faint)}
+.node.sel .box{border-color:var(--ink);box-shadow:0 0 0 3px color-mix(in srgb,var(--ink) 14%,transparent),var(--shadow)}
+.node .tile{width:46px;height:46px;border-radius:11px;display:grid;place-items:center;background:var(--tile);color:var(--ink2)}
+.node .tile.logo{background:#fff}
+.node .tile img{width:30px;height:30px;object-fit:contain;-webkit-user-drag:none;pointer-events:none}
+.node .tile svg{width:26px;height:26px}
+.node .h{position:absolute;top:50%;width:11px;height:11px;margin-top:-5.5px;border-radius:50%;background:var(--node-bg);border:1.5px solid var(--node-line)}
+.node .h.in{left:-6px}.node .h.out{right:-6px}
+.node .nl{position:absolute;top:96px;left:50%;width:210px;margin-left:-105px;text-align:center;pointer-events:none}
+.node .t1{color:var(--ink);font-weight:600;font-size:12.5px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.node .t2{color:var(--muted);font-size:11px;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.node .chips{display:flex;gap:4px;justify-content:center;margin-top:4px;flex-wrap:wrap}
+.node.dim{opacity:.28}
+.node.rec .box{border-style:dashed;border-color:var(--rec)}
+.node.new .box{border-color:var(--new)}
+.node.chg .box{border-color:var(--chg)}
+.node.del .box{border-style:dashed;border-color:var(--del);opacity:.7}
+.node.st-waiting .box{border-style:dashed}
+.node.st-in_progress .box{border-color:var(--prog);animation:pulse 1.4s ease-in-out infinite}
+.node.st-done .box{border-color:var(--done)}
+.node.st-blocked .box{border-color:var(--del)}
+@keyframes pulse{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--prog) 22%,transparent)}}
+.node.alert .box{border-color:var(--sev);border-width:2px;box-shadow:0 0 0 5px color-mix(in srgb,var(--sev) 22%,transparent),0 0 28px color-mix(in srgb,var(--sev) 35%,transparent)}
+.flag{position:absolute;top:-9px;right:-9px;height:22px;min-width:22px;padding:0 5px;border-radius:7px;display:flex;align-items:center;justify-content:center;gap:2px;font-size:11px;font-weight:700;color:#fff;box-shadow:0 0 0 2px var(--bg)}
+.flag svg{width:12px;height:12px}
+
+.chip{display:inline-flex;align-items:center;font-size:10.5px;font-weight:500;line-height:17px;padding:0 6px;border-radius:4px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
+.chip.c{border-color:color-mix(in srgb,var(--c) 45%,transparent);color:var(--c);background:color-mix(in srgb,var(--c) 10%,transparent)}
+
+.tools{position:absolute;left:16px;bottom:16px;display:flex;gap:4px;z-index:3}
+.tools button.wide{width:auto;padding:0 10px;display:inline-flex;gap:6px;align-items:center;font-size:12px}
+.tools button.act{color:var(--ink);border-color:var(--faint)}
+.tools button{width:32px;height:32px;border-radius:8px;border:1px solid var(--line2);background:var(--panel);cursor:pointer;display:grid;place-items:center;color:var(--ink2);box-shadow:var(--shadow)}
+.tools button:hover{color:var(--ink);border-color:var(--faint)}
+.tools svg{width:15px;height:15px}
+.legend{position:absolute;right:16px;bottom:16px;display:flex;gap:12px;flex-wrap:wrap;justify-content:flex-end;max-width:60%;font-size:11px;color:var(--muted);background:var(--panel);border:1px solid var(--line2);border-radius:8px;padding:6px 10px;z-index:3}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:16px;height:0;border-top:2px solid var(--c)}
+.legend i.d{border-top-style:dashed}
+.hint{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);font-size:11.5px;color:var(--muted);z-index:3;display:flex;gap:10px;align-items:center}
+.hint button{border:1px solid var(--line2);background:var(--panel);border-radius:7px;padding:4px 10px;cursor:pointer;color:var(--ink2)}
+.hint button:hover{color:var(--ink)}
+
+.float{position:absolute;z-index:4;background:var(--panel);border:1px solid var(--line2);border-radius:10px;box-shadow:var(--shadow)}
+.bar{left:50%;top:14px;transform:translateX(-50%);width:min(760px,calc(100% - 32px));padding:12px 14px;display:flex;gap:14px;align-items:center}
+.bar .bt{flex:1;min-width:0}
+.bar .bt b{color:var(--ink);font-weight:600}
+.bar .bt div{font-size:12px;color:var(--muted)}
+.btn{border:1px solid var(--ink);background:var(--ink);color:var(--bg);border-radius:7px;padding:6px 12px;font-weight:500;cursor:pointer;white-space:nowrap}
+.btn.sec{background:transparent;color:var(--ink2);border-color:var(--line2)}
+.btn:disabled{opacity:.5;cursor:default}
+.x{border:0;background:none;color:var(--muted);cursor:pointer;padding:4px;border-radius:5px;display:grid;place-items:center}
+.x:hover{background:var(--hover);color:var(--ink)}
+.prog{height:4px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:6px}
+.prog i{display:block;height:100%;background:var(--ink)}
+
+.peek{right:14px;top:14px;bottom:62px;width:360px;max-width:calc(100% - 28px);overflow:auto;padding:16px}
+.peek{display:flex;flex-direction:column}
+.peek>*{flex:none}
+.peek:has(.peekfoot){padding-bottom:0}
+.peekfoot{position:sticky;bottom:0;margin:auto -16px 0;padding:12px 16px;display:flex;background:var(--panel);border-top:1px solid var(--line)}
+.peekfoot .btn{width:100%;height:34px;margin:0;display:flex;align-items:center;justify-content:center;flex:none}
+.plims{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.plim{display:flex;flex-direction:column;gap:2px;text-align:left;border:1px solid var(--line2);background:var(--panel2);border-radius:8px;padding:8px 10px;cursor:pointer}
+.plim:hover{border-color:var(--faint)}
+.pl-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.pl-t{color:var(--ink);font-weight:500;font-size:12.5px}
+.pl-v{color:var(--ink2);font-size:12.5px}
+.pl-s{color:var(--muted);font-size:11.5px;margin-top:2px}
+.pl-s b{font-weight:600}
+.peek h2{margin:0;font-size:15px;color:var(--ink);font-weight:600;display:flex;gap:10px;align-items:center}
+.peek h2 .tile{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--tile);flex:none}
+.peek h2 .tile.logo{background:#fff}
+.peek h2 img{width:20px;height:20px}
+.peek h2 svg{width:17px;height:17px}
+.peek p{margin:10px 0 0}
+.props{display:grid;grid-template-columns:96px 1fr;gap:6px 10px;margin-top:14px;font-size:12.5px}
+.props>span:nth-child(odd){color:var(--muted)}
+.props>span:nth-child(even){color:var(--ink2)}
+.sub{margin-top:16px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.lnk{cursor:pointer;text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:2px}
+.lnk:hover{color:var(--ink)}
+
+.empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);line-height:1.7}
+
+/* listas */
+.lists{max-width:1180px;margin:0 auto;padding:28px 16px 0;height:calc(100vh - 52px);min-height:320px;display:flex;flex-direction:column;overflow:hidden}
+.lists .lhead{flex:none}
+.lbody{flex:1;min-height:0;overflow-y:auto;padding-bottom:40px;overscroll-behavior:contain}
+.sec{margin-bottom:34px}
+.lhead{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin-bottom:12px}
+.ltabs{display:flex;gap:4px}
+.ltools{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 0;min-height:40px}
+.ltools .filters{margin-left:0}
+.ltab{border:0;background:none;padding:8px 10px;margin-bottom:-1px;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;white-space:nowrap;display:flex;gap:6px;align-items:center;font-weight:500}
+.ltab:hover{color:var(--ink2)}
+.ltab.act{color:var(--ink);border-bottom-color:var(--ink)}
+.ltab .cnt{font-size:11.5px;color:var(--muted);font-weight:400}
+.cp{border:1px solid var(--line2);background:var(--panel);border-radius:6px;height:28px;padding:0 8px;font-size:11.5px;color:var(--ink2);cursor:pointer;display:inline-flex;gap:5px;align-items:center;white-space:nowrap}
+.cp:hover{color:var(--ink);border-color:var(--faint)}
+.cp svg{width:12px;height:12px}
+.row .cp{opacity:0;transition:opacity .12s}
+.row:hover .cp,.row .cp:focus-visible{opacity:1}
+@media (hover:none){.row .cp{opacity:1}}
+
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);border-radius:8px;padding:8px 14px;font-weight:500;z-index:50;box-shadow:var(--shadow);transition:opacity .2s}
+.sh{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 0 10px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.sh h3{margin:0;font-size:13.5px;font-weight:600;color:var(--ink)}
+.sh .n{color:var(--muted);font-size:12px}
+.sh .meta{color:var(--muted);font-size:12px}
+.filters{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto}
+.filters button{height:28px;display:inline-flex;align-items:center;border:1px solid var(--line2);background:none;border-radius:6px;padding:2px 9px;font-size:12px;color:var(--muted);cursor:pointer}
+.filters button:hover{color:var(--ink2)}
+.filters button.act{background:var(--panel2);color:var(--ink);border-color:var(--faint)}
+.grp{font-size:12px;color:var(--muted);padding:10px 8px 6px;display:flex;gap:8px;align-items:center}
+.row{display:grid;grid-template-columns:86px minmax(0,1fr) auto auto;gap:12px;align-items:start;padding:9px 8px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:6px}
+.row:hover{background:var(--hover)}
+.row.act{background:var(--panel2);box-shadow:inset 2px 0 0 var(--ink)}
+.row .rt{color:var(--ink);font-weight:500}
+.row .rs{font-size:12px;color:var(--muted)}
+.row .rn{font-size:12.5px;color:var(--ink2);margin-top:2px}
+.row .rr{display:flex;flex-direction:column;align-items:flex-end;gap:4px;text-align:right;font-size:12px;color:var(--muted);min-width:0;max-width:240px}
+.row .rm{font-size:12px;color:var(--muted);margin-top:1px}
+.row .rm b{font-weight:500;color:var(--ink2)}
+.row .rr .m{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .rr .mono{font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
+.row .rc{display:flex;justify-content:flex-end}
+.sev{display:inline-flex;justify-content:center;font-size:11px;font-weight:600;line-height:20px;border-radius:5px;padding:0 7px;color:var(--c);background:color-mix(in srgb,var(--c) 12%,transparent);border:1px solid color-mix(in srgb,var(--c) 35%,transparent);white-space:nowrap}
+.none{color:var(--muted);padding:14px 8px}
+.more{margin:10px 8px 0;border:1px solid var(--line2);background:none;border-radius:6px;padding:4px 10px;color:var(--ink2);cursor:pointer}
+.steps{display:flex;gap:6px;margin:10px 0 4px;flex-wrap:wrap}
+.step{font-size:11.5px;padding:2px 9px;border-radius:5px;border:1px solid var(--line2);color:var(--muted)}
+.step.on{border-color:var(--ink);color:var(--ink)}
+.filters button.tg{display:inline-flex;align-items:center;gap:6px}
+.filters button.tg i{width:12px;height:12px;border-radius:3px;border:1.5px solid var(--faint);display:grid;place-items:center}
+.filters button.tg.act i{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.filters button.tg svg{width:9px;height:9px}
+
+@media (max-width:720px){
+  .top{gap:8px;padding:0 12px}
+  .pname{max-width:120px;overflow:hidden;text-overflow:ellipsis}
+  .tag,.live{display:none}
+  .map{height:72vh;min-height:420px}
+  .legend{display:none}
+  .peek{left:14px;right:14px;width:auto;top:auto;bottom:62px;max-height:60%}
+  .row{grid-template-columns:70px minmax(0,1fr)}
+  .row .rr{grid-column:2;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:flex-start;gap:4px 10px}
+  .row .rc{grid-column:2;justify-content:flex-start}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="mark"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><path d="M10 6.5h4a3 3 0 013 3V14"/></svg></div>
+  <span class="pname" id="pname">System Design</span>
+  <span class="tag" id="ver"></span>
+  <nav class="tabs" id="tabs"></nav>
+  <span class="sp"></span>
+  <span class="tag" id="upd"></span>
+  <span class="live" id="live">Estático</span>
+</header>
+<section class="map" id="map"></section>
+<main class="lists" id="lists"></main>
+
+<script>
+const EMBEDDED = /*__SD_STATE__*/null;
+
+/* ---------- utilidades ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = iso => { try { return new Date(iso).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}); } catch(e){ return iso||''; } };
+const MOD = /Mac|iPhone|iPad/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent) ? 'Cmd' : 'Ctrl';
+const N = 88, COLW = 300, ROWH = 160;
+const svgI = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+// Ícones de tipo no traço do Lucide.
+const ICONS = {
+  client:'<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  frontend:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>',
+  api:'<path d="m18 16 4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16"/>',
+  service:'<path d="M21 16V8a2 2 0 00-1-1.7l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.7l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.3 7L12 12l8.7-5M12 22V12"/>',
+  database:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/>',
+  cache:'<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>',
+  queue:'<path d="M12 2l10 5-10 5L2 7zM2 12l10 5 10-5M2 17l10 5 10-5"/>',
+  storage:'<path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/>',
+  auth:'<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>',
+  external:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20 15 15 0 010-20z"/>',
+  loadbalancer:'<path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>',
+  worker:'<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  ai:'<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.7 1.8 1.8.7-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z"/>',
+  monitoring:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  cdn:'<path d="M18 10h-1.3A8 8 0 109 20h9a5 5 0 000-10z"/>',
+  gateway:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'
+};
+const UI = {
+  plus:'<path d="M12 5v14M5 12h14"/>', minus:'<path d="M5 12h14"/>',
+  fit:'<path d="M3 8V5a2 2 0 012-2h3M16 3h3a2 2 0 012 2v3M21 16v3a2 2 0 01-2 2h-3M8 21H5a2 2 0 01-2-2v-3"/>',
+  layers:'<path d="M12 2l10 5-10 5L2 7zM2 12l10 5 10-5M2 17l10 5 10-5"/>',
+  close:'<path d="M18 6 6 18M6 6l12 12"/>', warn:'<path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/>',
+  check:'<path d="M20 6 9 17l-5-5"/>', down:'<path d="M12 5v14M19 12l-7 7-7-7"/>'
+};
+// Logo pelo nome/tecnologia quando o nó não traz "logo" (slug do Simple Icons ou URL).
+const LOGO_GUESS = [
+  ['next.js','nextdotjs'],['nextjs','nextdotjs'],['vercel','vercel'],['supabase','supabase'],['postgres','postgresql'],['mysql','mysql'],
+  ['mongodb','mongodb'],['redis','redis'],['stripe','stripe'],['google drive','googledrive'],['google calendar','googlecalendar'],
+  ['gemini','googlegemini'],['openai','openai'],['anthropic','anthropic'],['claude','claude'],['cloudflare','cloudflare'],['aws','amazonwebservices'],
+  ['s3','amazons3'],['firebase','firebase'],['docker','docker'],['nginx','nginx'],['rabbitmq','rabbitmq'],['kafka','apachekafka'],
+  ['sentry','sentry'],['resend','resend'],['sendgrid','sendgrid'],['twilio','twilio'],['whatsapp','whatsapp'],['github','github'],
+  ['react','react'],['vue','vuedotjs'],['svelte','svelte'],['django','django'],['fastapi','fastapi'],['flask','flask'],['laravel','laravel'],
+  ['node','nodedotjs'],['express','express'],['nestjs','nestjs'],['prisma','prisma'],['clerk','clerk'],['auth0','auth0'],['giphy','giphy'],
+  ['mercado pago','mercadopago'],['grafana','grafana'],['prometheus','prometheus'],['elastic','elasticsearch'],['meilisearch','meilisearch'],
+  ['hetzner','hetzner'],['digitalocean','digitalocean'],['railway','railway'],['render','render'],['fly.io','flydotio'],['netlify','netlify']
+];
+// Servidor dos logos; o sd.py troca o marcador (vazio quando project.logos é false).
+const LOGO_HOST = '/*__SD_LOGO_HOST__*/';
+const LOGO_SLUG = /^[a-z0-9]{1,64}$/, LOGO_URL = /^https:\/\/\S+$/;
+function logoOf(n){
+  const pr = (S && S.map && S.map.project) || {};
+  if (pr.logos === false || !LOGO_HOST || n.logo === false) return '';
+  if (typeof n.logo === 'string' && n.logo) {
+    if (LOGO_URL.test(n.logo)) return n.logo;
+    return LOGO_SLUG.test(n.logo) ? LOGO_HOST + n.logo : '';
+  }
+  const hay = ((n.label||'') + ' ' + (n.tech||'')).toLowerCase();
+  const g = LOGO_GUESS.find(([k]) => new RegExp('(^|[^a-z])' + k.replace(/\./g,'\\.') + '([^a-z]|$)').test(hay));
+  return g ? LOGO_HOST + g[1] : '';
+}
+let simple = true; try { simple = localStorage.getItem('sd_simple') !== '0'; } catch (e) {}
+function tileHtml(n){
+  const t = ICONS[n.type] ? n.type : 'service', url = simple ? '' : logoOf(n);
+  if (url) return `<div class="tile logo"><img src="${esc(url)}" alt="" draggable="false" data-t="${t}"></div>`;
+  return `<div class="tile">${svgI(ICONS[t])}</div>`;
+}
+function fixImgs(root){
+  root.querySelectorAll('img[data-t]').forEach(img => img.onerror = () => { const tile = img.parentNode; tile.classList.remove('logo'); tile.innerHTML = svgI(ICONS[img.dataset.t] || ICONS.service); });
+}
+
+const TYPE_NAME = {client:'Cliente',frontend:'Frontend',api:'API',service:'Serviço',database:'Banco',cache:'Cache',queue:'Fila',storage:'Storage',auth:'Autenticação',external:'Externo',loadbalancer:'Load balancer',worker:'Worker',ai:'IA',monitoring:'Observabilidade',cdn:'CDN',gateway:'Gateway'};
+const SCOPE_NAME = {hosting:'Hospedagem',service:'Serviço',app:'Aplicação'};
+const SEV = {crit:['Crítico','--crit'],warn:['Atenção','--warn'],info:['Info','--info']};
+const CVE_SEV = {CRITICAL:['Crítica','--crit'],HIGH:['Alta','--warn'],MODERATE:['Média','--prog'],MEDIUM:['Média','--prog'],LOW:['Baixa','--info'],UNKNOWN:['Sem nota','--info']};
+const PRIO = {alta:['Alta','--crit'],media:['Média','--warn'],baixa:['Baixa','--info']};
+const KIND = {rec:['Recomendado','--rec'],new:['Novo','--new'],changed:['Alterado','--chg'],removed:['Removido','--del']};
+const STATE = {waiting:['Em espera','--info'],in_progress:['Implementando','--prog'],done:['Implementado','--done'],blocked:['Bloqueado','--del']};
+const RANK = {blocked:-1,waiting:0,in_progress:1,done:2};
+const chip = ([t, c]) => `<span class="chip c" style="--c:var(${c})">${esc(t)}</span>`;
+const sev = ([t, c]) => `<span class="sev" style="--c:var(${c})">${esc(t)}</span>`;
+
+/* ---------- estado ---------- */
+let S = null, tab = null, selNode = null, selLimit = null, hover = null, changesOn = false, live = false, lastRaw = '';
+let limitFilter = 'all', cveFilter = 'all', cveHideDev = false, cveAll = false, listTab = null;
+let COPY = [], LTOOLS = '', peekCopy = '';
+const views = {};
+let M = null, P = null;
+
+function seenKey(){ return 'sd_seen_' + ((S && S.map.project && S.map.project.name) || ''); }
+function consumeChanges(){
+  const c = S.changes; if (!c) return false;
+  let seen = null; try { seen = localStorage.getItem(seenKey()); } catch(e){}
+  if (seen === c.id) return false;
+  try { localStorage.setItem(seenKey(), c.id); } catch(e){}
+  return true;
+}
+
+/* ---------- modelo por aba ---------- */
+function model(t){
+  const m = S.map, p = S.pending, ch = S.changes;
+  const nodes = m.nodes.map(n => ({...n, kind:'normal'}));
+  const edges = m.edges.map(e => ({...e, kind:'normal'}));
+  const limits = m.limits.map(l => ({...l, kind:'normal'}));
+  const byId = id => nodes.find(n => n.id === id);
+  const recs = [];
+  if (t === 'update' && p) {
+    (p.remove_nodes||[]).forEach(id => { const n = byId(id); if (n) { n.kind='removed'; n.state=(p.items[id]||{}).state; } });
+    (p.change_nodes||[]).forEach(c => { const i = nodes.findIndex(n => n.id === c.id); if (i>=0) nodes[i] = {...nodes[i], ...c.patch, id:c.id, kind:'changed', state:(p.items[c.id]||{}).state, _note:c.note}; });
+    (p.add_nodes||[]).forEach(n => nodes.push({...n, kind:'new', state:(p.items[n.id]||{}).state}));
+    const rm = new Set((p.remove_edges||[]).map(e => e.from+'>'+e.to));
+    edges.forEach(e => { if (rm.has(e.from+'>'+e.to)) e.kind = 'removed'; });
+    (p.add_edges||[]).forEach(e => {
+      const a = (p.items[e.to]||p.items[e.from]||{}).state || 'waiting';
+      const b = (p.items[e.from]||p.items[e.to]||{}).state || 'waiting';
+      edges.push({...e, kind:'new', state:(RANK[a] <= RANK[b] ? a : b)});
+    });
+    const rl = new Set(p.remove_limits||[]);
+    limits.forEach(l => { if (rl.has(l.id)) l.kind = 'removed'; });
+    (p.add_limits||[]).forEach(l => limits.push({...l, kind:'new'}));
+  }
+  if (t === 'current' && changesOn && ch) {
+    ch.added_nodes.forEach(id => { const n = byId(id); if (n) n.kind='new'; });
+    ch.changed_nodes.forEach(id => { const n = byId(id); if (n) n.kind='changed'; });
+    const ae = new Set(ch.added_edges.map(e => e.join('>')));
+    edges.forEach(e => { if (ae.has(e.from+'>'+e.to)) e.kind='new'; });
+    limits.forEach(l => { if (ch.added_limits.includes(l.id)) l.kind='new'; });
+  }
+  const r = m.recommendations || {nodes:[],edges:[],remove_edges:[]};
+  r.nodes.forEach(n => recs.push(n));
+  if (t === 'recs') {
+    const rm = new Set((r.remove_edges||[]).map(e => e.from+'>'+e.to));
+    edges.forEach(e => { if (rm.has(e.from+'>'+e.to)) e.kind='removed'; });
+    r.nodes.forEach(n => nodes.push({...n, kind:'rec'}));
+    r.edges.forEach(e => edges.push({...e, kind:'rec'}));
+  }
+  limits.forEach(l => { const by = r.nodes.filter(n => (n.resolves||[]).includes(l.id)); if (by.length) l.resolvedBy = by; });
+  const ids = new Set(nodes.map(n => n.id));
+  return {nodes, edges: edges.filter(e => ids.has(e.from) && ids.has(e.to)), limits, recs};
+}
+
+/* ---------- layout em camadas, da esquerda para a direita ---------- */
+// Arestas que pulam colunas ganham pontos de passagem (nós fantasmas) para não cruzar por trás dos nós.
+const DUMMY = 54;
+function layout(nodes, edges){
+  const es = edges.filter(e => e.from !== e.to);
+  const adj = {}, indeg = {}; es.forEach(e => { (adj[e.from] = adj[e.from] || []).push(e); indeg[e.to] = (indeg[e.to]||0)+1; });
+  const st = {}, back = new Set();
+  const dfs = u => { st[u] = 1; (adj[u]||[]).forEach(e => { if (st[e.to] === 1) back.add(e); else if (!st[e.to]) dfs(e.to); }); st[u] = 2; };
+  nodes.filter(n => !indeg[n.id]).forEach(n => { if (!st[n.id]) dfs(n.id); });
+  nodes.forEach(n => { if (!st[n.id]) dfs(n.id); });
+  const fw = es.filter(e => !back.has(e));
+  const layer = {}; nodes.forEach(n => layer[n.id] = 0);
+  for (let i = 0; i <= nodes.length; i++) { let c = false; fw.forEach(e => { if (layer[e.to] < layer[e.from] + 1) { layer[e.to] = layer[e.from] + 1; c = true; } }); if (!c) break; }
+  const segs = [], chains = new Map(), dummy = new Set();
+  fw.forEach((e, i) => {
+    const chain = [e.from];
+    for (let l = layer[e.from] + 1; l < layer[e.to]; l++) { const d = `~${i}~${l}`; layer[d] = l; dummy.add(d); chain.push(d); }
+    chain.push(e.to); chains.set(e, chain);
+    for (let k = 1; k < chain.length; k++) segs.push([chain[k-1], chain[k]]);
+  });
+  const cols = [];
+  [...nodes.map(n => n.id), ...dummy].forEach(id => (cols[layer[id]] = cols[layer[id]] || []).push(id));
+  for (let c = 0; c < cols.length; c++) if (!cols[c]) cols[c] = [];
+  const pos = {}, setPos = () => cols.forEach(col => col.forEach((id,i) => pos[id] = i));
+  setPos();
+  const pred = {}, succ = {}; segs.forEach(([a,b]) => { (pred[b] = pred[b]||[]).push(a); (succ[a] = succ[a]||[]).push(b); });
+  const bary = (id, map) => { const a = map[id]; return a && a.length ? a.reduce((s,x) => s + pos[x], 0) / a.length : pos[id]; };
+  for (let it = 0; it < 8; it++) {
+    for (let c = 1; c < cols.length; c++) { cols[c].sort((a,b) => bary(a,pred) - bary(b,pred)); setPos(); }
+    for (let c = cols.length - 2; c >= 0; c--) { cols[c].sort((a,b) => bary(a,succ) - bary(b,succ)); setPos(); }
+  }
+  const hOf = id => dummy.has(id) ? DUMMY : ROWH;
+  const colH = cols.map(col => col.reduce((s, id) => s + hOf(id), 0));
+  const maxH = Math.max(...colH, ROWH);
+  const out = {}, pt = {};
+  cols.forEach((col, ci) => {
+    let y = (maxH - colH[ci]) / 2;
+    col.forEach(id => {
+      if (dummy.has(id)) pt[id] = {x: ci * COLW + N/2, y: y + DUMMY/2};
+      else out[id] = {x: ci * COLW, y, layer: ci};
+      y += hOf(id);
+    });
+  });
+  // Ponto de passagem segue reto na altura anterior quando a coluna está livre ali (sem desvio à toa).
+  const byCol = {}; Object.values(out).forEach(p => (byCol[p.layer] = byCol[p.layer] || []).push(p));
+  const free = (col, y) => !(byCol[col] || []).some(p => y > p.y - 16 && y < p.y + N + 60);
+  chains.forEach((chain, e) => {
+    let cur = out[e.from].y + N/2;
+    chain.slice(1, -1).forEach(d => { if (free(layer[d], cur)) pt[d].y = cur; else cur = pt[d].y; });
+  });
+  const routes = new Map();
+  chains.forEach((chain, e) => routes.set(e, chain.slice(1, -1).map(d => pt[d])));
+  return {P: out, routes};
+}
+
+/* ---------- arestas (curvas do n8n) ---------- */
+function roundedPath(pts, r){
+  const q = pts.filter((p, i) => i === 0 || p.x !== pts[i-1].x || p.y !== pts[i-1].y);
+  const clean = q.filter((p, i) => i === 0 || i === q.length - 1 || !((q[i-1].x === p.x && p.x === q[i+1].x) || (q[i-1].y === p.y && p.y === q[i+1].y)));
+  let d = `M${clean[0].x},${clean[0].y}`;
+  for (let i = 1; i < clean.length - 1; i++) {
+    const p = clean[i-1], c = clean[i], n = clean[i+1];
+    const r1 = Math.min(r, Math.hypot(c.x-p.x, c.y-p.y) / 2, Math.hypot(n.x-c.x, n.y-c.y) / 2);
+    const ux = Math.sign(c.x-p.x), uy = Math.sign(c.y-p.y), vx = Math.sign(n.x-c.x), vy = Math.sign(n.y-c.y);
+    d += ` L${c.x - ux*r1},${c.y - uy*r1} Q${c.x},${c.y} ${c.x + vx*r1},${c.y + vy*r1}`;
+  }
+  const z = clean[clean.length - 1];
+  return {d: d + ` L${z.x},${z.y}`, pts: clean};
+}
+function edgeGeom(a, b, k, via){
+  const sx = a.x + N + 6, sy = a.y + N/2, tx = b.x - 6, ty = b.y + N/2, st = 22;
+  let pts;
+  if (via) {
+    const keys = [{x:sx+st, y:sy}, ...via, {x:tx-st, y:ty}];
+    pts = [{x:sx, y:sy}, keys[0]];
+    for (let i = 1; i < keys.length; i++) { const p = keys[i-1], q = keys[i], mx = (p.x + q.x) / 2; pts.push({x:mx, y:p.y}, {x:mx, y:q.y}, q); }
+    pts.push({x:tx, y:ty});
+  } else {
+    const low = Math.max(a.y, b.y) + N + 78 + k * 14;
+    pts = [{x:sx, y:sy}, {x:sx+st, y:sy}, {x:sx+st, y:low}, {x:tx-st, y:low}, {x:tx-st, y:ty}, {x:tx, y:ty}];
+  }
+  const g = roundedPath(pts, 10);
+  // candidatos a posição do rótulo: meio de cada trecho, do mais longo para o mais curto
+  const cands = [];
+  for (let i = 1; i < g.pts.length; i++) { const p = g.pts[i-1], q = g.pts[i]; cands.push({x:(p.x+q.x)/2, y:(p.y+q.y)/2, len:Math.abs(q.x-p.x) * 2 + Math.abs(q.y-p.y)}); }
+  cands.sort((u, v) => v.len - u.len);
+  return {d: g.d, mx: cands[0].x, my: cands[0].y, cands};
+}
+// Dois rótulos nunca ficam no mesmo lugar: tenta os outros trechos da conexão e, se todos colidirem, desce o rótulo.
+function placeLabel(g, text, placed){
+  const w = Math.min(190, text.length * 6.4 + 14), h = 18;
+  const hit = (x, y) => placed.some(r => Math.abs(r.x - x) < (r.w + w) / 2 + 4 && Math.abs(r.y - y) < h + 2);
+  let pos = g.cands.find(c => c.len > 40 && !hit(c.x, c.y));
+  if (!pos) { pos = {x: g.mx, y: g.my}; for (let n = 0; n < 12 && hit(pos.x, pos.y); n++) pos = {x: g.mx, y: pos.y + h + 2}; }
+  placed.push({x: pos.x, y: pos.y, w});
+  return pos;
+}
+const ECOL = {normal:'--edge', hot:'--ink', rec:'--rec', new:'--new', del:'--del', in_progress:'--prog', done:'--done'};
+
+/* ---------- mapa ---------- */
+function renderMap(){
+  const el = $('#map'), upd = tab === 'update';
+  M = model(tab);
+  if (!M.nodes.length) {
+    el.innerHTML = `<div class="empty"><div>O mapa ainda está vazio.<br>${S.pending ? 'Abra a aba Atualização para revisar a arquitetura proposta.' : 'Peça ao Claude para analisar o projeto ou planejar a arquitetura com a skill system-design.'}</div></div>` + barHtml();
+    bindBar(); return;
+  }
+  const L = layout(M.nodes, M.edges); P = L.P;
+  let defs = '';
+  Object.entries(ECOL).forEach(([k,c]) => defs += `<marker id="ar-${k}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 1L9 5L0 9z" fill="var(${c})"/></marker>`);
+  let paths = '', labels = '', backN = 0; const placed = [];
+  M.edges.forEach((e, i) => {
+    const a = P[e.from], b = P[e.to];
+    const via = L.routes.get(e);
+    const g = edgeGeom(a, b, via ? 0 : backN++, via);
+    const k = {rec:'rec', new:'new', removed:'del'}[e.kind] || '';
+    const mk = e.state === 'in_progress' || e.state === 'done' ? e.state : (k || 'normal');
+    paths += `<path class="e ${k} ${e.state ? 'st-' + e.state : ''}" data-i="${i}" data-m="${mk}" d="${g.d}" marker-end="url(#ar-${mk})"/>`;
+    if (e.label) { const lp = placeLabel(g, e.label, placed); labels += `<div class="el" data-i="${i}" style="left:${lp.x}px;top:${lp.y}px" title="${esc(e.label)}">${esc(e.label)}</div>`; }
+  });
+  const limOf = id => M.limits.find(l => l.id === selLimit && l.node === id);
+  let nodes = '';
+  M.nodes.forEach(n => {
+    const p = P[n.id], cls = ['node', {rec:'rec', new:'new', changed:'chg', removed:'del'}[n.kind] || ''];
+    if (upd && n.state) cls.push('st-' + n.state);
+    if (selNode === n.id) cls.push('sel');
+    const lim = limOf(n.id);
+    let flag = '';
+    if (lim) { cls.push('alert'); const c = SEV[lim.severity||'info'][1]; flag = `<span class="flag" style="background:var(${c})">${svgI(UI.warn)}</span>`; }
+    else if (upd && n.state === 'done') flag = `<span class="flag" style="background:var(--done)">${svgI(UI.check)}</span>`;
+    const chips = [];
+    if (KIND[n.kind]) chips.push(chip(KIND[n.kind]));
+    if (upd && n.state && STATE[n.state]) chips.push(chip(STATE[n.state]));
+    const style = `left:${p.x}px;top:${p.y}px` + (lim ? `;--sev:var(${SEV[lim.severity||'info'][1]})` : '');
+    nodes += `<div class="${cls.join(' ')}" data-id="${esc(n.id)}" style="${style}">${M.edges.some(e => e.to === n.id) ? '<span class="h in"></span>' : ''}${M.edges.some(e => e.from === n.id) ? '<span class="h out"></span>' : ''}<div class="box">${tileHtml(n)}</div>${flag}
+      <div class="nl"><div class="t1">${esc(simple ? (TYPE_NAME[n.type] || 'Serviço') : (n.label || n.id))}</div><div class="t2">${esc(simple ? (n.label || n.id) : (n.tech || TYPE_NAME[n.type] || ''))}</div>${chips.length ? `<div class="chips">${chips.join('')}</div>` : ''}</div></div>`;
+  });
+  let legend = '';
+  if (tab === 'recs') legend += `<span><i class="d" style="--c:var(--rec)"></i>Recomendado</span><span><i class="d" style="--c:var(--del)"></i>Substituída</span>`;
+  if (upd) legend += `<span><i style="--c:var(--new)"></i>Novo</span><span><i style="--c:var(--chg)"></i>Alterado</span><span><i class="d" style="--c:var(--del)"></i>Removido</span><span><i class="d" style="--c:var(--info)"></i>Em espera</span><span><i style="--c:var(--prog)"></i>Implementando</span><span><i style="--c:var(--done)"></i>Implementado</span>`;
+  if (tab === 'current' && changesOn) legend += `<span><i style="--c:var(--new)"></i>Novo</span><span><i style="--c:var(--chg)"></i>Alterado</span>`;
+  el.innerHTML = `<div class="world" id="world"><svg width="1" height="1"><defs>${defs}</defs>${paths}</svg>${labels}${nodes}</div>
+    <div class="tools"><button id="zin" title="Aproximar">${svgI(UI.plus)}</button><button id="zout" title="Afastar">${svgI(UI.minus)}</button><button id="zfit" title="Ajustar à tela">${svgI(UI.fit)}</button><button id="simple" class="wide ${simple ? 'act' : ''}" aria-pressed="${simple}" title="Mostrar só o tipo de cada componente">${svgI(UI.layers)}${simple ? 'Simplificado' : 'Detalhado'}</button></div>
+    <div class="hint"><span>Arraste para mover · ${MOD} + rolagem para zoom</span><button id="godown">Listas ${svgI(UI.down).replace('<svg','<svg width="12" height="12" style="vertical-align:-2px"')}</button></div>
+    ${legend ? `<div class="legend">${legend}</div>` : ''}${barHtml()}${limitBarHtml()}${peekHtml()}`;
+  fixImgs(el);
+  setupView();
+  bindBar();
+  applyFocus();
+}
+
+function barHtml(){
+  if (tab === 'update' && S.pending) {
+    const p = S.pending, items = Object.values(p.items || {}), done = items.filter(i => i.state === 'done').length;
+    const st = {proposed:'Aguardando aprovação', approved:'Aprovada', in_progress:'Em andamento', rejected:'Rejeitada'}[p.status] || p.status;
+    let right = '';
+    if (p.status === 'proposed') right = live ? `<button class="btn" id="approve">Aprovar e iniciar</button><button class="btn sec" id="reject">Rejeitar</button>` : `<span class="rs" style="font-size:12px;color:var(--muted)">Aprove no chat ou com <code>sd.py approve</code></span>`;
+    const prog = p.status === 'proposed' || p.status === 'rejected' ? '' : `<div class="prog"><i style="width:${items.length ? Math.round(done/items.length*100) : 0}%"></i></div>`;
+    return `<div class="float bar"><div class="bt"><b>${esc(p.title)}</b><div>${esc(st)} · ${done} de ${items.length} itens implementados</div>${prog}</div>${right}</div>`;
+  }
+  if (tab === 'current' && changesOn && S.changes) {
+    const c = S.changes, lb = id => (c.labels||{})[id] || id, bits = [];
+    if (c.added_nodes.length) bits.push(`${c.added_nodes.length} novo(s): ${c.added_nodes.map(lb).map(esc).join(', ')}`);
+    if (c.changed_nodes.length) bits.push(`${c.changed_nodes.length} alterado(s): ${c.changed_nodes.map(lb).map(esc).join(', ')}`);
+    if (c.removed_nodes.length) bits.push(`${c.removed_nodes.length} removido(s): ${c.removed_nodes.map(lb).map(esc).join(', ')}`);
+    return `<div class="float bar"><div class="bt"><b>Atualização concluída${c.title ? ': ' + esc(c.title) : ''}</b><div>${bits.join(' · ') || 'Sem mudanças de componentes.'}</div></div><button class="btn sec" id="dismiss">Ok</button></div>`;
+  }
+  return '';
+}
+function limitBarHtml(){
+  const l = selLimit && M.limits.find(x => x.id === selLimit);
+  if (!l || (tab === 'update' && S.pending) || (tab === 'current' && changesOn)) return '';
+  const n = M.nodes.find(x => x.id === l.node) || {};
+  return `<div class="float bar"><div class="bt"><b>${esc(l.label)}: ${esc(l.value || '')}</b><div>${esc(n.label || l.node)} · ${esc(SCOPE_NAME[l.scope||'service'])}${l.note ? ' · ' + esc(l.note) : ''}</div></div>${sev(SEV[l.severity||'info'])}<button class="x" id="clearlim" title="Limpar">${svgI(UI.close).replace('<svg','<svg width="15" height="15"')}</button></div>`;
+}
+
+function peekHtml(){
+  const n = selNode && M.nodes.find(x => x.id === selNode);
+  if (!n) return '';
+  const lims = M.limits.filter(l => l.node === n.id && l.kind !== 'removed');
+  const outs = M.edges.filter(e => e.from === n.id), ins = M.edges.filter(e => e.to === n.id);
+  const lab = id => (M.nodes.find(x => x.id === id) || {}).label || id;
+  const link = (id, extra) => `<a class="lnk" data-node="${esc(id)}">${esc(lab(id))}</a>${extra ? ` <span style="color:var(--muted)">(${esc(extra)})</span>` : ''}`;
+  peekCopy = n.kind === 'rec' ? recPrompt([n]) : '';
+  let h = `<div class="float peek"><div style="display:flex;gap:8px;align-items:flex-start"><h2 style="flex:1">${tileHtml(n)}${esc(n.label || n.id)}</h2><button class="x" id="unsel" title="Fechar">${svgI(UI.close).replace('<svg','<svg width="15" height="15"')}</button></div>`;
+  const chips = [chip([TYPE_NAME[n.type] || n.type || 'Serviço', '--info'])];
+  if (KIND[n.kind]) chips.push(chip(KIND[n.kind]));
+  if (n.state && STATE[n.state]) chips.push(chip(STATE[n.state]));
+  h += `<div style="display:flex;gap:4px;margin-top:10px;flex-wrap:wrap">${chips.join('')}</div>`;
+  if (n.description) h += `<p>${esc(n.description)}</p>`;
+  const props = [['Tecnologia', n.tech], ['Roda em', n.host], ['Prioridade', n.priority], ['Esforço', n.effort], ['Custo', n.cost]].filter(x => x[1]);
+  if (props.length) h += `<div class="props">${props.map(([k,v]) => `<span>${k}</span><span>${esc(v)}</span>`).join('')}</div>`;
+  if (n.why) h += `<div class="sub">Por que</div><p style="margin-top:4px">${esc(n.why)}</p>`;
+  if (n._note) h += `<div class="sub">Mudança</div><p style="margin-top:4px">${esc(n._note)}</p>`;
+  if ((n.resolves||[]).length) h += `<div class="sub">Resolve</div><p style="margin-top:4px">${n.resolves.map(id => `<a class="lnk" data-limit="${esc(id)}">${esc(((M.limits.find(l => l.id === id)||{}).label) || id)}</a>`).join(', ')}</p>`;
+  if ((n.improves||[]).length) h += `<div class="sub">Melhora</div><p style="margin-top:4px">${n.improves.map(id => link(id)).join(', ')}</p>`;
+  if (ins.length) h += `<div class="sub">Recebe de</div><p style="margin-top:4px">${ins.map(e => link(e.from, e.label)).join(', ')}</p>`;
+  if (outs.length) h += `<div class="sub">Envia para</div><p style="margin-top:4px">${outs.map(e => link(e.to, e.label)).join(', ')}</p>`;
+  if (lims.length) h += `<div class="sub">Limitações</div>` + `<div class="plims">${lims.map(l => `<button class="plim" data-limit="${esc(l.id)}"><span class="pl-t">${esc(l.label)}</span><span class="pl-v">${esc(l.value||'')}</span><span class="pl-s"><b style="color:var(${SEV[l.severity||'info'][1]})">${esc(SEV[l.severity||'info'][0])}</b> · ${esc(SCOPE_NAME[l.scope||'service'])}</span></button>`).join('')}</div>`;
+  if (peekCopy) h += `<div class="peekfoot"><button class="btn sec" id="peekcp" title="Copiar para colar no Claude">${svgI(CP_ICON).replace('<svg', '<svg width="14" height="14" style="vertical-align:-2px;margin-right:6px"')}Melhorar no agente</button></div>`;
+  return h + '</div>';
+}
+
+/* ---------- pan, zoom e foco ---------- */
+function bounds(ids){
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  ids.forEach(id => { const p = P[id]; if (!p) return; x0=Math.min(x0,p.x-60); y0=Math.min(y0,p.y-20); x1=Math.max(x1,p.x+N+60); y1=Math.max(y1,p.y+N+70); });
+  return {x0,y0,x1,y1};
+}
+function setupView(){
+  const map = $('#map'), world = $('#world');
+  const fitKey = Object.keys(P).sort().join(',');
+  let v = views[tab];
+  const apply = smooth => { world.style.transition = smooth ? 'transform .35s ease' : ''; world.style.transform = `translate(${v.x}px,${v.y}px) scale(${v.k})`; };
+  const fit = smooth => {
+    const r = map.getBoundingClientRect(), b = bounds(Object.keys(P)), pad = 70;
+    const k = Math.max(.35, Math.min(1.05, (r.width - pad*2) / (b.x1-b.x0), (r.height - pad*2 - 110) / (b.y1-b.y0)));
+    v = views[tab] = {x:(r.width - (b.x1-b.x0)*k)/2 - b.x0*k, y:(r.height - 100 - (b.y1-b.y0)*k)/2 - b.y0*k + 10, k, fitKey};
+    apply(smooth);
+  };
+  window.__center = id => { const p = P[id]; if (!p) return; const r = map.getBoundingClientRect(); v.k = Math.max(v.k, .85); v.x = r.width/2 - (p.x + N/2) * v.k; v.y = r.height/2 - (p.y + N/2) * v.k; apply(true); };
+  if (!v || v.fitKey !== fitKey) fit(); else apply();
+  const zoom = (f, cx, cy) => { const r = map.getBoundingClientRect(); cx = cx == null ? r.width/2 : cx; cy = cy == null ? r.height/2 : cy; const k = Math.max(.2, Math.min(2.4, v.k * f)); v.x = cx - (cx - v.x) * (k / v.k); v.y = cy - (cy - v.y) * (k / v.k); v.k = k; apply(); };
+  // Rolagem simples desce a página; Ctrl/Cmd + rolagem (ou pinça no trackpad) faz zoom.
+  map.onwheel = e => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); const r = map.getBoundingClientRect(); zoom(Math.exp(-e.deltaY * .01), e.clientX - r.left, e.clientY - r.top); };
+  $('#zin').onclick = () => zoom(1.2); $('#zout').onclick = () => zoom(1/1.2); $('#zfit').onclick = () => fit(true);
+  $('#simple').onclick = () => { simple = !simple; try { localStorage.setItem('sd_simple', simple ? '1' : '0'); } catch (e) {} renderMap(); };
+  $('#godown').onclick = () => $('#lists').scrollIntoView({behavior:'smooth'});
+  let drag = null, moved = 0;
+  // Mouse e trackpad (inclusive o arrastar com 3 dedos do macOS) usam eventos de mouse na janela;
+  // eventos de ponteiro ficam só para toque. Assim um pointercancel do navegador não derruba o arrasto.
+  map.ondragstart = e => e.preventDefault();
+  const start = (x, y) => { drag = {x, y, vx:v.x, vy:v.y}; moved = 0; map.classList.add('drag'); };
+  const move = (x, y) => { if (!drag) return; const dx = x - drag.x, dy = y - drag.y; moved = Math.max(moved, Math.abs(dx) + Math.abs(dy)); v.x = drag.vx + dx; v.y = drag.vy + dy; apply(); };
+  const end = () => { if (!drag) return; drag = null; map.classList.remove('drag'); };
+  const blocked = el => el.closest('.float,.tools,.hint,.legend');
+  map.onmousedown = e => { if (e.button !== 0 || blocked(e.target)) return; e.preventDefault(); start(e.clientX, e.clientY); };
+  window.onmousemove = e => move(e.clientX, e.clientY);
+  window.onmouseup = end;
+  window.onblur = end;
+  map.onpointerdown = e => { if (e.pointerType !== 'touch' || blocked(e.target)) return; start(e.clientX, e.clientY); };
+  map.onpointermove = e => { if (e.pointerType === 'touch') move(e.clientX, e.clientY); };
+  map.onpointerup = map.onpointercancel = e => { if (e.pointerType === 'touch') end(); };
+  world.onclick = e => { if (moved > 4) return; const g = e.target.closest('.node'); if (g) { selNode = selNode === g.dataset.id ? null : g.dataset.id; renderAll(); } };
+  map.addEventListener('click', e => { if (moved > 4 || e.target.closest('.node,.float,.tools,.hint,.legend')) return; if (selNode) { selNode = null; renderAll(); } });
+  world.querySelectorAll('.node').forEach(g => { g.onmouseenter = () => { hover = g.dataset.id; applyFocus(); }; g.onmouseleave = () => { hover = null; applyFocus(); }; });
+}
+function applyFocus(){
+  const world = $('#world'); if (!world || !M) return;
+  const lim = selLimit && M.limits.find(l => l.id === selLimit);
+  const target = hover || selNode || (lim && lim.node) || null;
+  const near = new Set(target ? [target] : []);
+  M.edges.forEach(e => { if (e.from === target) near.add(e.to); if (e.to === target) near.add(e.from); });
+  world.querySelectorAll('.e').forEach(p => { const e = M.edges[p.dataset.i], on = target && (e.from === target || e.to === target); p.classList.toggle('hot', !!on && !p.classList.contains('rec') && !p.classList.contains('del') && !p.classList.contains('new')); p.classList.toggle('dim', !!target && !on); p.setAttribute('marker-end', `url(#ar-${on && p.classList.contains('hot') ? 'hot' : p.dataset.m})`); });
+  world.querySelectorAll('.el').forEach(l => { const e = M.edges[l.dataset.i], on = target && (e.from === target || e.to === target); l.classList.toggle('dim', !!target && !on); l.classList.toggle('hot', !!on); });
+  world.querySelectorAll('.node').forEach(g => g.classList.toggle('dim', !!target && !near.has(g.dataset.id)));
+}
+
+/* ---------- listas abaixo do mapa ---------- */
+function filters(name, cur, opts){ return `<div class="filters" data-group="${name}">${opts.map(([k,t,c]) => `<button data-v="${k}" class="${cur===k?'act':''}">${t}${c != null ? ' ' + c : ''}</button>`).join('')}</div>`; }
+const nodeLabel = id => ((M && M.nodes.find(n => n.id === id)) || S.map.nodes.find(n => n.id === id) || {}).label || id;
+
+function updateSection(){
+  const p = S.pending; if (!p || tab !== 'update') return '';
+  const steps = [['proposed','Proposta'],['approved','Aprovada'],['in_progress','Implementando'],['done','Concluída']];
+  const idx = {proposed:0, approved:1, in_progress:2, rejected:0}[p.status] || 0;
+  const items = Object.entries(p.items || {});
+  const kindT = {add:['Novo','--new'], change:['Alterado','--chg'], remove:['Removido','--del'], task:['Tarefa','--info']};
+  let h = `<div class="sec"><div class="sh"><span class="meta">${items.length} itens</span><span class="meta">${esc(p.created ? fmt(p.created) : '')}</span></div>`;
+  if (p.summary || p.reason) h += `<div style="padding:12px 8px 0">${p.summary ? `<div style="color:var(--ink)">${esc(p.summary)}</div>` : ''}${p.reason ? `<div class="rs" style="color:var(--muted);margin-top:4px">${esc(p.reason)}</div>` : ''}</div>`;
+  h += `<div class="steps" style="padding:0 8px">${steps.map(([k,n],i) => `<span class="step ${i <= idx ? 'on' : ''}">${n}</span>`).join('')}${p.status === 'rejected' ? chip(['Rejeitada: ' + (p.reject_reason || 'sem motivo'), '--del']) : ''}</div>`;
+  h += items.map(([id,i]) => `<div class="row" data-node="${esc(id)}">${sev(STATE[i.state] || STATE.waiting)}<div><div class="rt">${esc(i.label || id)}</div>${i.note ? `<div class="rs">${esc(i.note)}</div>` : ''}</div><div class="rr">${chip(kindT[i.kind] || [i.kind,'--info'])}</div></div>`).join('');
+  return h + '</div>';
+}
+
+function changesSection(){
+  if (tab !== 'current' || !changesOn || !S.changes) return '';
+  const c = S.changes, lb = id => (c.labels||{})[id] || id;
+  const rows = [['Novos', c.added_nodes, '--new'], ['Alterados', c.changed_nodes, '--chg'], ['Removidos', c.removed_nodes, '--del']].filter(r => r[1].length);
+  return `<div class="sec"><div class="sh"><span class="meta">Versão ${esc(c.version)}</span><span class="meta">${esc(fmt(c.at))}</span></div>` + rows.map(([t, arr, col]) => `<div class="row" style="cursor:default">${sev([t, col])}<div class="rn">${arr.map(lb).map(esc).join(', ')}</div><div></div></div>`).join('') + (c.summary ? `<div class="none">${esc(c.summary)}</div>` : '') + '</div>';
+}
+
+function limitsSection(){
+  let ls = M.limits.filter(l => l.kind !== 'removed' || tab === 'update');
+  const cnt = {all: ls.length, crit: 0, warn: 0, info: 0}; ls.forEach(l => cnt[l.severity||'info']++);
+  if (limitFilter !== 'all') ls = ls.filter(l => (l.severity||'info') === limitFilter);
+  LTOOLS = filters('limit', limitFilter, [['all','Todas',cnt.all],['crit','Críticas',cnt.crit],['warn','Atenção',cnt.warn],['info','Info',cnt.info]]);
+  let h = `<div class="sec" id="sec-limits"><div class="sh"><span class="meta">Clique para ver o nó afetado no mapa</span>${copyAll('limits', ls)}</div>`;
+  if (!ls.length) return h + '<div class="none">Nenhuma limitação registrada.</div></div>';
+  ['crit','warn','info'].forEach(s => {
+    const g = ls.filter(l => (l.severity||'info') === s); if (!g.length) return;
+    h += g.map(l => {
+      const meta = [];
+      if (l.kind === 'new') meta.push(chip(['Novo','--new'])); if (l.kind === 'removed') meta.push(chip(['Removido','--del']));
+      const recs = (l.resolvedBy||[]).map(r => `<div class="rs">Recomendação: <span style="color:var(--rec)">${esc(r.label)}</span></div>`).join('');
+      return `<div class="row ${selLimit === l.id ? 'act' : ''}" data-limit="${esc(l.id)}">${sev(SEV[s])}<div><div class="rt">${esc(l.label)}: ${esc(l.value||'')}</div><div class="rm"><b>${esc(nodeLabel(l.node))}</b> · ${esc(SCOPE_NAME[l.scope||'service'])}</div>${l.note ? `<div class="rn">${esc(l.note)}</div>` : ''}${recs}</div>${meta.length ? `<div class="rr">${meta.join('')}</div>` : '<div></div>'}<div class="rc">${copyBtn(limitPrompt([l]), 'Resolver no agente')}</div></div>`;
+    }).join('');
+  });
+  return h + '</div>';
+}
+
+function recsSection(){
+  const rs = M.recs.slice().sort((a,b) => ['alta','media','baixa'].indexOf(a.priority||'media') - ['alta','media','baixa'].indexOf(b.priority||'media'));
+  let h = `<div class="sec"><div class="sh"><span class="meta">Clique para ver no mapa com recomendações</span>${copyAll('recs', rs)}</div>`;
+  if (!rs.length) return h + '<div class="none">Nenhuma recomendação pendente.</div></div>';
+  return h + rs.map(n => {
+    const meta = [`<b>${esc(TYPE_NAME[n.type] || n.type || 'Serviço')}</b>`]; if (n.effort) meta.push('Esforço ' + esc(n.effort)); if (n.cost) meta.push('Custo ' + esc(n.cost));
+    return `<div class="row ${selNode === n.id ? 'act' : ''}" data-rec="${esc(n.id)}">${sev(PRIO[n.priority||'media'] || PRIO.media)}<div><div class="rt">${esc(n.label)}${n.tech ? ` <span style="color:var(--muted);font-weight:400">· ${esc(n.tech)}</span>` : ''}</div><div class="rm">${meta.join(' · ')}</div>${n.why ? `<div class="rn">${esc(n.why)}</div>` : ''}${(n.resolves||[]).length ? `<div class="rs">Resolve: ${n.resolves.map(id => esc(((S.map.limits.find(l => l.id === id)||{}).label) || id)).join(', ')}</div>` : ''}</div><div></div><div class="rc">${copyBtn(recPrompt([n]), 'Melhorar no agente')}</div></div>`;
+  }).join('') + '</div>';
+}
+
+function cvesSection(){
+  const c = S.cves;
+  let h = `<div class="sec"><div class="sh">`;
+  LTOOLS = '';
+  if (!c) return h + `</div><div class="none">Ainda sem varredura. Rode <code>python3 .system-design/sd.py cves</code>.</div></div>`;
+  let vs = c.vulns || [];
+  if (cveHideDev) vs = vs.filter(v => !v.dev);
+  const cnt = {all: vs.length, CRITICAL: 0, HIGH: 0, MODERATE: 0, LOW: 0};
+  vs.forEach(v => { const k = v.severity === 'MEDIUM' ? 'MODERATE' : v.severity; if (k in cnt) cnt[k]++; });
+  if (cveFilter !== 'all') vs = vs.filter(v => (v.severity === 'MEDIUM' ? 'MODERATE' : v.severity) === cveFilter);
+  h += `<span class="meta">${esc((c.packages || 0).toLocaleString('pt-BR'))} pacotes de ${esc((c.files||[]).join(', '))} · OSV, ${esc(fmt(c.scanned_at))}</span>`;
+  LTOOLS = filters('cve', cveFilter, [['all','Todas',cnt.all],['CRITICAL','Críticas',cnt.CRITICAL],['HIGH','Altas',cnt.HIGH],['MODERATE','Médias',cnt.MODERATE],['LOW','Baixas',cnt.LOW]])
+    + `<div class="filters"><button class="tg ${cveHideDev ? 'act' : ''}" id="hidedev" aria-pressed="${cveHideDev}"><i>${cveHideDev ? svgI(UI.check).replace('stroke-width="1.8"', 'stroke-width="3.5"') : ''}</i>Ocultar dev</button></div>`;
+  h += `${copyAll('cves', vs)}</div>`;
+  (c.warnings || []).forEach(w => h += `<div class="none">${esc(w)}</div>`);
+  if (!vs.length) return h + '<div class="none">Nenhuma vulnerabilidade conhecida neste filtro.</div></div>';
+  const shown = cveAll ? vs : vs.slice(0, 40);
+  h += shown.map(v => {
+    const meta = `<b>${esc(v.package + '@' + v.version)}</b>${v.dev ? ' · dev' : ''} · ${v.fixed ? `<span style="color:var(--done)">Corrigida em ${esc(v.fixed)}</span>` : '<span style="color:var(--del)">Sem correção</span>'}`;
+    const other = (v.aliases || []).filter(a => a !== v.id).concat(v.advisory !== v.id ? [v.advisory] : []);
+    return `<div class="row" style="cursor:default">${sev(CVE_SEV[v.severity] || CVE_SEV.UNKNOWN)}<div><div class="rt"><a class="lnk" href="${esc(v.url)}" target="_blank" rel="noopener">${esc(v.id)}</a>${other.length ? ` <span style="color:var(--muted);font-weight:400">· ${esc([...new Set(other)].slice(0,2).join(', '))}</span>` : ''}</div><div class="rm">${meta}</div><div class="rn">${esc(v.summary || '')}</div></div><div></div><div class="rc">${copyBtn(cvePrompt([v]), 'Corrigir no agente')}</div></div>`;
+  }).join('');
+  if (vs.length > shown.length) h += `<button class="more" id="cveall">Mostrar todas (${vs.length})</button>`;
+  return h + '</div>';
+}
+
+/* ---------- texto para colar no Claude ---------- */
+const CP_ICON = '<path d="M9 9h10a2 2 0 012 2v8a2 2 0 01-2 2H9a2 2 0 01-2-2v-8a2 2 0 012-2z"/><path d="M5 15H4a1 1 0 01-1-1V5a2 2 0 012-2h9a1 1 0 011 1v1"/>';
+function copyBtn(text, label, all){ COPY.push(text); return `<button class="cp ${all ? 'all' : ''}" data-cp="${COPY.length - 1}" title="Copiar para colar no Claude">${svgI(CP_ICON)}${label || 'Copiar'}</button>`; }
+function copyAll(kind, list){
+  if (!list.length) return '';
+  const text = kind === 'limits' ? limitPrompt(list) : kind === 'recs' ? recPrompt(list) : cvePrompt(list);
+  return copyBtn(text, `Copiar ${list.length === 1 ? '1 item' : list.length + ' itens'}`, true);
+}
+const projName = () => (S.map.project || {}).name || 'projeto';
+const RULE = 'Leia .system-design/AI-MAP.md antes de começar. Se a solução mudar o fluxo (novo serviço, conexão, limite ou deploy), use a skill system-design: registre a proposta com python3 .system-design/sd.py propose e espere minha aprovação antes de editar o código.';
+function limitPrompt(ls){
+  const recs = (S.map.recommendations || {}).nodes || [];
+  const body = ls.map((l, i) => {
+    const by = recs.filter(r => (r.resolves || []).includes(l.id));
+    return [`${ls.length > 1 ? (i+1) + '. ' : ''}${l.label}: ${l.value || ''} (id ${l.id})`,
+      `   Severidade: ${SEV[l.severity||'info'][0]}. Escopo: ${SCOPE_NAME[l.scope||'service']}. Componente: ${nodeLabel(l.node)} (${l.node}).`,
+      l.note ? `   Detalhe: ${l.note}` : '',
+      ...by.map(r => `   Recomendação mapeada: ${r.label}${r.tech ? ' (' + r.tech + ')' : ''}. ${r.why || ''}`)].filter(Boolean).join('\n');
+  }).join('\n\n');
+  return `Resolva ${ls.length > 1 ? 'estas limitações' : 'esta limitação'} do system design do projeto ${projName()}.\n\n${body}\n\n${RULE}\nAo terminar, ajuste ou remova o limite no .system-design/map.json e rode python3 .system-design/sd.py build. Depois rode o build e os testes do projeto e me diga o resultado.`;
+}
+function recPrompt(rs){
+  const lim = id => S.map.limits.find(l => l.id === id);
+  const body = rs.map((n, i) => {
+    const edges = ((S.map.recommendations || {}).edges || []).filter(e => e.from === n.id || e.to === n.id).map(e => `${nodeLabel(e.from) || e.from} -> ${nodeLabel(e.to) || e.to}`);
+    return [`${rs.length > 1 ? (i+1) + '. ' : ''}${n.label} (id ${n.id}, tipo ${n.type || 'service'}${n.tech ? ', ' + n.tech : ''})`,
+      `   Prioridade: ${(PRIO[n.priority||'media'] || PRIO.media)[0]}.${n.effort ? ' Esforço: ' + n.effort + '.' : ''}${n.cost ? ' Custo: ' + n.cost + '.' : ''}`,
+      n.why ? `   Por que: ${n.why}` : '',
+      (n.resolves||[]).length ? `   Resolve: ${n.resolves.map(id => { const l = lim(id); return l ? `${l.label} (${l.value || ''})` : id; }).join('; ')}` : '',
+      (n.improves||[]).length ? `   Melhora: ${n.improves.map(nodeLabel).join(', ')}` : '',
+      edges.length ? `   Conexões previstas: ${edges.join(', ')}` : ''].filter(Boolean).join('\n');
+  }).join('\n\n');
+  return `Implemente ${rs.length > 1 ? 'estas recomendações' : 'esta recomendação'} do system design do projeto ${projName()}.\n\n${body}\n\n${RULE} Use o mesmo id da recomendação em add_nodes (ou em implements_recommendations) para que ela vire nó real ao finalizar. Depois rode o build e os testes do projeto e me diga o resultado.`;
+}
+const vkey = v => (String(v).split(/[-+]/)[0].match(/\d+/g) || []).map(Number);
+const vcmp = (a, b) => { const x = vkey(a), y = vkey(b); for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i]||0) - (y[i]||0); if (d) return d; } return 0; };
+function cvePrompt(vs){
+  const by = {};
+  vs.forEach(v => (by[v.package + '@' + v.version] = by[v.package + '@' + v.version] || []).push(v));
+  const body = Object.entries(by).map(([pkg, list]) => {
+    const fixes = list.map(v => v.fixed).filter(Boolean).sort(vcmp), noFix = list.filter(v => !v.fixed);
+    const target = fixes.length ? fixes[fixes.length - 1] : '';
+    return [`- ${pkg}${list[0].dev ? ' (dependência de desenvolvimento)' : ''}: ${list.length} aviso(s). ${target ? 'Versão mínima que corrige todos: ' + target + '.' : 'Sem versão corrigida.'}${noFix.length && fixes.length ? ' ' + noFix.length + ' aviso(s) ainda sem correção.' : ''}`,
+      ...list.map(v => `  [${(CVE_SEV[v.severity] || CVE_SEV.UNKNOWN)[0]}] ${v.id}: ${v.summary || ''} ${v.url}`)].join('\n');
+  }).join('\n');
+  const files = ((S.cves || {}).files || []).join(', ') || 'o lockfile';
+  return `Corrija ${vs.length > 1 ? 'estas vulnerabilidades' : 'esta vulnerabilidade'} nas dependências do projeto ${projName()} (lidas de ${files}).\n\n${body}\n\nAtualize cada pacote para a versão indicada. Se for dependência transitiva, atualize o pacote que a traz ou use overrides. Confira as notas de versão quando a atualização for de versão maior. Depois rode a instalação, o build e os testes, rode python3 .system-design/sd.py cves para confirmar que os avisos sumiram e me diga o resultado.`;
+}
+let toastT = null;
+function toast(msg){ let el = $('#toast'); if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; document.body.appendChild(el); } el.textContent = msg; el.style.opacity = 1; clearTimeout(toastT); toastT = setTimeout(() => el.style.opacity = 0, 1800); }
+async function copyText(text){
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) { const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = 0; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+  toast('Copiado. Cole no Claude.');
+}
+
+/* ---------- abas das listas ---------- */
+function listTabs(){
+  const out = [];
+  if (tab === 'update' && S.pending) out.push(['update', 'Atualização', Object.keys(S.pending.items || {}).length]);
+  if (tab === 'current' && changesOn && S.changes) out.push(['changes', 'O que mudou', '']);
+  out.push(['limits', 'Limitações', M.limits.filter(l => l.kind !== 'removed' || tab === 'update').length]);
+  if (tab !== 'update') out.push(['recs', 'Recomendações', M.recs.length]);
+  out.push(['cves', 'CVEs', S.cves ? (S.cves.vulns || []).length : '']);
+  return out;
+}
+function renderLists(){
+  COPY = []; LTOOLS = '';
+  const tabs = listTabs();
+  if (!tabs.find(x => x[0] === listTab)) listTab = tabs[0][0];
+  const body = {update: updateSection, changes: changesSection, limits: limitsSection, recs: recsSection, cves: cvesSection}[listTab]();
+  const old = $('#lists .lbody'), top = old ? old.scrollTop : 0;
+  $('#lists').innerHTML = `<div class="lhead"><nav class="ltabs">${tabs.map(([k, n, c]) => `<button class="ltab ${listTab === k ? 'act' : ''}" data-ltab="${k}">${n}${c !== '' ? `<span class="cnt">${c}</span>` : ''}</button>`).join('')}</nav><div class="ltools">${LTOOLS}</div></div><div class="lbody">${body}</div>`;
+  const nb = $('#lists .lbody'); if (nb) nb.scrollTop = top;
+}
+
+/* ---------- página ---------- */
+function renderHeader(){
+  const m = S.map, pr = m.project || {};
+  const tabs = []; if (S.pending) tabs.push(['update','Atualização']); tabs.push(['current','Mapa atual'], ['recs','Com recomendações']);
+  if (!tabs.find(t => t[0] === tab)) tab = tabs[0][0];
+  document.title = (pr.name || 'Projeto') + ' · System Design';
+  $('#pname').textContent = pr.name || 'Projeto';
+  $('#ver').textContent = `v${m.version || 1} · ${m.nodes.length} componentes`;
+  $('#upd').textContent = m.updated ? 'Atualizado ' + fmt(m.updated) : (pr.hosting && pr.hosting.provedor) || '';
+  $('#upd').style.display = $('#upd').textContent ? '' : 'none';
+  const rc = (m.recommendations || {}).nodes || [];
+  $('#tabs').innerHTML = tabs.map(([k,n]) => `<button class="tab ${tab===k?'act':''}" data-tab="${k}">${n}${k==='update' ? `<span class="cnt">${esc(({proposed:'aguardando', approved:'aprovada', in_progress:'em andamento', rejected:'rejeitada'})[S.pending.status] || '')}</span>` : k==='recs' && rc.length ? `<span class="cnt">${rc.length}</span>` : ''}</button>`).join('');
+  document.querySelectorAll('.tab').forEach(b => b.onclick = () => { tab = b.dataset.tab; selNode = null; history.replaceState(null, '', '#' + tab); renderAll(); });
+}
+function renderAll(){ if (!S) return; renderHeader(); renderMap(); renderLists(); bindLists(); }
+
+function selectLimit(id){
+  selLimit = selLimit === id ? null : id; selNode = null;
+  renderAll();
+  if (selLimit) { const l = M.limits.find(x => x.id === selLimit); window.scrollTo({top:0, behavior:'smooth'}); if (l && window.__center) window.__center(l.node); }
+}
+function bindLists(){
+  document.querySelectorAll('[data-ltab]').forEach(b => b.onclick = () => { listTab = b.dataset.ltab; renderLists(); bindLists(); });
+  document.querySelectorAll('[data-cp]').forEach(b => b.onclick = e => { e.stopPropagation(); e.preventDefault(); copyText(COPY[+b.dataset.cp]); });
+  document.querySelectorAll('#lists a.lnk[href]').forEach(a => a.onclick = e => e.stopPropagation());
+  document.querySelectorAll('#lists [data-limit], #map [data-limit]').forEach(r => r.onclick = () => selectLimit(r.dataset.limit));
+  document.querySelectorAll('#lists [data-node], #map [data-node]').forEach(r => r.onclick = () => { selNode = r.dataset.node; selLimit = null; renderAll(); window.scrollTo({top:0, behavior:'smooth'}); window.__center && window.__center(selNode); });
+  document.querySelectorAll('#lists [data-rec]').forEach(r => r.onclick = () => { tab = 'recs'; selNode = r.dataset.rec; selLimit = null; history.replaceState(null, '', '#recs'); renderAll(); window.scrollTo({top:0, behavior:'smooth'}); window.__center && window.__center(selNode); });
+  document.querySelectorAll('.filters[data-group]').forEach(f => f.querySelectorAll('button').forEach(b => b.onclick = () => { if (f.dataset.group === 'limit') limitFilter = b.dataset.v; else { cveFilter = b.dataset.v; cveAll = false; } renderLists(); bindLists(); }));
+  const hd = $('#hidedev'); if (hd) hd.onclick = () => { cveHideDev = !cveHideDev; renderLists(); bindLists(); };
+  const ca = $('#cveall'); if (ca) ca.onclick = () => { cveAll = true; renderLists(); bindLists(); };
+}
+function bindBar(){
+  const pc = $('#peekcp'); if (pc) pc.onclick = e => { e.stopPropagation(); copyText(peekCopy); };
+  const u = $('#unsel'); if (u) u.onclick = () => { selNode = null; renderAll(); };
+  const cl = $('#clearlim'); if (cl) cl.onclick = () => { selLimit = null; renderAll(); };
+  const d = $('#dismiss'); if (d) d.onclick = () => { changesOn = false; renderAll(); };
+  const a = $('#approve'); if (a) a.onclick = async () => { a.disabled = true; await post('/api/approve'); poll(); };
+  const r = $('#reject'); if (r) r.onclick = async () => { const reason = prompt('Motivo da rejeição (opcional):') || ''; await post('/api/reject', {reason}); poll(); };
+  bindLists();
+}
+async function post(url, body){ try { await fetch(url, {method:'POST', headers:{'Content-Type':'application/json','X-SD':'1'}, body: JSON.stringify(body || {})}); } catch(e){} }
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && (selNode || selLimit)) { selNode = null; selLimit = null; renderAll(); } });
+
+/* ---------- ao vivo ---------- */
+function setLive(on){ live = on; const l = $('#live'); l.classList.toggle('on', on); l.textContent = on ? 'Ao vivo' : 'Estático'; }
+function accept(next, first){
+  const hadPending = !!(S && S.pending);
+  S = next;
+  if (first) { changesOn = consumeChanges(); tab = S.pending ? 'update' : 'current'; const h = location.hash.slice(1); if (['update','current','recs'].includes(h)) tab = h; return; }
+  if (!hadPending && S.pending) { tab = 'update'; selNode = null; listTab = 'update'; }
+  if (hadPending && !S.pending) { tab = 'current'; selNode = null; changesOn = consumeChanges(); }
+}
+async function poll(){
+  try {
+    const r = await fetch('/api/state', {cache:'no-store'}); if (!r.ok) throw 0;
+    const raw = await r.text(); setLive(true);
+    // Durante um arrasto não redesenha (o redesenho recria o mapa); tenta de novo na próxima consulta.
+    if (raw !== lastRaw && !document.querySelector('#map.drag')) { const first = !S; lastRaw = raw; accept(JSON.parse(raw), first); renderAll(); }
+  } catch(e) { setLive(false); }
+}
+(async function init(){
+  window.addEventListener('resize', () => { if (S) { delete views[tab]; renderMap(); } });
+  if (location.protocol.startsWith('http')) {
+    try { const r = await fetch('/api/state', {cache:'no-store'}); if (r.ok) { lastRaw = await r.text(); accept(JSON.parse(lastRaw), true); setLive(true); renderAll(); setInterval(poll, 1500); return; } } catch(e){}
+  }
+  if (EMBEDDED) { accept(EMBEDDED, true); renderAll(); }
+  else $('#map').innerHTML = '<div class="empty">Sem dados. Rode: python3 .system-design/sd.py build</div>';
+})();
+</script>
+</body>
+</html>
