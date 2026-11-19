@@ -18,6 +18,8 @@ English • <a href="README.pt-BR.md">Português</a>
 
 system-design is a skill for AI agents. It keeps the project's architecture in `.system-design/` (components, connections, capacity limits, recommendations and dependency vulnerabilities) and shows everything on a local n8n-style page.
 
+It also maps **code flows**: for each important route (for example `POST /api/orders`), the path the request takes through the code (route, middlewares, validation, controller, action, repository, response), with each file's code and a summary of what it does. A **With recommendations** toggle shows suggested new steps and suggested code changes.
+
 The AI reads a summary of the map before touching the backend. When a task changes the flow (a new database, queue, external API or deploy), it proposes the change, you approve it on the page, and only then does it implement it, reporting progress in real time.
 
 ## Screenshots
@@ -50,6 +52,23 @@ Below the map are the lists of limits and dependency vulnerabilities. Clicking a
   <img src="docs/screenshots/cves.png" alt="CVE list with the fixed version" width="100%">
 </p>
 
+The **Fluxo de código** (Code flow) tab draws one route at a time. Pick the route at the top; each step is a node with its file. Clicking a step opens its summary, the file and lines, and the code with syntax highlighting. Without inline code, `sd.py` reads the snippet from the file on disk, so the page follows the code.
+
+<p align="center">
+  <img src="docs/screenshots/fluxo-codigo.png" alt="Code flow of POST /api/orders: route, middlewares, validation, controller, action, repository and response" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/fluxo-codigo-arquivo.png" alt="Step panel with summary, file, linked component and code" width="100%">
+</p>
+
+The **Com recomendações** (With recommendations) toggle adds suggested steps (dashed purple, such as an idempotency middleware), marks steps whose code should change (blue, with *Atual* and *Sugerido* views) and the connections that go away (dashed red). Each recommendation has a button that copies a ready request, with the suggested code, to paste into the agent.
+
+<p align="center">
+  <img src="docs/screenshots/fluxo-codigo-recomendacoes.png" alt="Code flow with recommended steps" width="49%">
+  <img src="docs/screenshots/fluxo-codigo-sugerido.png" alt="Current and suggested code of a step" width="49%">
+</p>
+
 > [!NOTE]
 > The screenshot data comes from [`examples/`](examples) and is fictional. The page itself is in Portuguese for now.
 
@@ -70,10 +89,12 @@ Ask the agent something like "map the system design of this project". The skill 
 
 | Mode | When | What happens |
 | --- | --- | --- |
-| 1. Map an existing project | The project already has code | The AI reads the code, asks all its questions in one round and writes `map.json` with nodes, connections, limits and recommendations |
-| 2. Design a new backend | New app, no backend yet | The target architecture becomes a proposal with implementation tasks |
+| 1. Map an existing project | The project already has code | The AI reads the code, asks all its questions in one round and writes `map.json` with nodes, connections, limits, recommendations and the code flows of the main routes |
+| 2. Design a new backend | New app, no backend yet | The target architecture and the planned code flows (with starter code) become a proposal with implementation tasks |
 | 3. Propose before changing the flow | New component, database, queue, cache, external API, authentication or deploy | The AI registers the proposal and waits for you to approve it in the update tab |
 | 4. Run the approved update | After approval | Each item goes through `waiting`, `in_progress` and `done`; at the end `finalize` updates the map |
+
+To map only the code of one route, ask something like "map the code flow of api/users" or "show the code flow of POST /api/orders with recommendations".
 
 Useful commands, from the project root:
 
@@ -97,7 +118,7 @@ An example to try is in [`examples/map.example.json`](examples/map.example.json)
 
 The `.system-design/` folder describes the project's architecture, limits and vulnerabilities. If it leaks, it becomes an attack roadmap.
 
-- Do not commit it or paste its content into an issue, PR, public chat or external service.
+- Do not commit it or paste its content into an issue, PR, public chat or external service. The generated `index.html` also embeds the code of the flow steps.
 - `init` adds the folder to `.gitignore` and warns you if git already tracks any file in it.
 - For backups, keep the folder somewhere private.
 
@@ -119,7 +140,7 @@ system-design-skill/
 ├── scripts/sd.py     Lifecycle CLI (propose, approve, set, finalize, cves, serve)
 ├── assets/viewer.html Map page
 ├── docs/screenshots/ README screenshots
-├── references/       map.json schema, limits, recommendations, new app
+├── references/       map.json schema, code flows, limits, recommendations, new app
 └── examples/         Example map
 ```
 

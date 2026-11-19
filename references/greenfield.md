@@ -32,4 +32,5 @@ Use no Modo 2 (projeto sem backend). Faça as perguntas numa rodada só, antes d
 - Comece pelo menor conjunto de peças que cobre as respostas. Cada peça a mais precisa de um motivo escrito no `description`.
 - Registre os limites do plano escolhido já na proposta (`add_limits`), com o valor do plano gratuito ou do plano inicial.
 - Coloque em `recommendations` (direto no `map.json`, depois do `finalize`) o que só vale após crescer, com o gatilho no `why`.
+- Desenhe também os fluxos de código das 2 a 4 rotas principais em `add_flows` (veja `code-flows.md`): pastas e arquivos, ordem de rota, middlewares, validação, action e repositório, com o código inicial sugerido em `code`. Isso vira o esqueleto que a implementação segue.
 - Quebre a implementação em `tasks` pequenas, na ordem em que vão acontecer: criar o projeto no provedor, schema e RLS, autenticação, primeira rota, deploy, monitoramento.

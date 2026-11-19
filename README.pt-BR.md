@@ -18,6 +18,8 @@
 
 O system-design é uma skill para agentes de IA. Ela guarda a arquitetura do projeto em `.system-design/` (componentes, conexões, limites de capacidade, recomendações e vulnerabilidades das dependências) e mostra tudo numa página local no estilo n8n.
 
+Ela também mapeia **fluxos de código**: para cada rota importante (por exemplo `POST /api/orders`), o caminho que a requisição faz no código (rota, middlewares, validação, controller, action, repositório, resposta), com o código de cada arquivo e um resumo do que ele faz. O botão **Com recomendações** mostra os passos novos sugeridos e as mudanças de código sugeridas.
+
 A IA lê um resumo do mapa antes de mexer em backend. Quando uma tarefa muda o fluxo (novo banco, fila, API externa, deploy), ela propõe a mudança, você aprova na página e só então ela implementa, marcando o progresso em tempo real.
 
 ## Capturas
@@ -50,6 +52,23 @@ Abaixo do mapa ficam as listas de limitações e de vulnerabilidades das depend�
   <img src="docs/screenshots/cves.png" alt="Lista de CVEs com a versão corrigida" width="100%">
 </p>
 
+A aba **Fluxo de código** desenha uma rota por vez. Escolha a rota no topo; cada passo vira um nó com o seu arquivo. Clicar num passo abre o resumo, o arquivo com as linhas e o código com realce de sintaxe. Sem código no JSON, o `sd.py` lê o trecho do arquivo no disco, então a página acompanha o código.
+
+<p align="center">
+  <img src="docs/screenshots/fluxo-codigo.png" alt="Fluxo de código do POST /api/orders: rota, middlewares, validação, controller, action, repositório e resposta" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/fluxo-codigo-arquivo.png" alt="Painel do passo com resumo, arquivo, componente ligado e código" width="100%">
+</p>
+
+O botão **Com recomendações** acrescenta os passos sugeridos (tracejado roxo, como um middleware de idempotência), marca os passos cujo código deve mudar (azul, com as visões *Atual* e *Sugerido*) e as conexões que saem (tracejado vermelho). Cada recomendação tem um botão que copia um pedido pronto, com o código sugerido, para colar no agente.
+
+<p align="center">
+  <img src="docs/screenshots/fluxo-codigo-recomendacoes.png" alt="Fluxo de código com passos recomendados" width="49%">
+  <img src="docs/screenshots/fluxo-codigo-sugerido.png" alt="Código atual e sugerido de um passo" width="49%">
+</p>
+
 > [!NOTE]
 > Os dados das capturas vêm de [`examples/`](examples) e são fictícios.
 
@@ -70,10 +89,12 @@ Peça ao agente algo como "mapeie o system design deste projeto". A skill tem 4 
 
 | Modo | Quando | O que acontece |
 | --- | --- | --- |
-| 1. Mapear um projeto existente | O projeto já tem código | A IA lê o código, faz todas as perguntas numa rodada só e escreve o `map.json` com nós, conexões, limites e recomendações |
-| 2. Desenhar um backend novo | App novo, sem backend | A arquitetura alvo vira uma proposta com tarefas de implementação |
+| 1. Mapear um projeto existente | O projeto já tem código | A IA lê o código, faz todas as perguntas numa rodada só e escreve o `map.json` com nós, conexões, limites, recomendações e os fluxos de código das rotas principais |
+| 2. Desenhar um backend novo | App novo, sem backend | A arquitetura alvo e os fluxos de código planejados (com código inicial) viram uma proposta com tarefas de implementação |
 | 3. Propor antes de mudar o fluxo | Novo componente, banco, fila, cache, API externa, autenticação ou deploy | A IA registra a proposta e espera você aprovar na aba Atualização |
 | 4. Executar a atualização aprovada | Depois da aprovação | Cada item passa por `waiting`, `in_progress` e `done`; no fim o `finalize` atualiza o mapa |
+
+Para mapear só o código de uma rota, peça algo como "mapeie o fluxo de código de api/users" ou "mostre o fluxo de código do POST /api/orders com recomendações".
 
 Comandos úteis, a partir da raiz do projeto:
 
@@ -97,7 +118,7 @@ O `sd.py init` cria a pasta `.system-design/` e mexe só nisto:
 
 A pasta `.system-design/` descreve a arquitetura, os limites e as vulnerabilidades do projeto. Se vazar, vira um roteiro de ataque.
 
-- Não faça commit dela nem cole o conteúdo em issue, PR, chat público ou serviço externo.
+- Não faça commit dela nem cole o conteúdo em issue, PR, chat público ou serviço externo. O `index.html` gerado também embute o código dos passos dos fluxos.
 - O `init` põe a pasta no `.gitignore` e avisa se o git já rastreia algum arquivo dela.
 - Para backup, guarde a pasta num lugar privado.
 
@@ -119,7 +140,7 @@ system-design-skill/
 ├── scripts/sd.py     CLI do ciclo de vida (propose, approve, set, finalize, cves, serve)
 ├── assets/viewer.html Página do mapa
 ├── docs/screenshots/ Capturas do README
-├── references/       Esquema do map.json, limites, recomendações, app novo
+├── references/       Esquema do map.json, fluxos de código, limites, recomendações, app novo
 └── examples/         Mapa de exemplo
 ```
 

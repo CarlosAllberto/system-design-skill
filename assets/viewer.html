@@ -115,7 +115,7 @@ code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--pane
 .bar .bt b{color:var(--ink);font-weight:600}
 .bar .bt div{font-size:12px;color:var(--muted)}
 .btn{border:1px solid var(--ink);background:var(--ink);color:var(--bg);border-radius:7px;padding:6px 12px;font-weight:500;cursor:pointer;white-space:nowrap}
-.btn.sec{background:transparent;color:var(--ink2);border-color:var(--line2)}
+.btn.sec{background:transparent;color:var(--ink2);border-color:var(--line2);margin-bottom:0}
 .btn:disabled{opacity:.5;cursor:default}
 .x{border:0;background:none;color:var(--muted);cursor:pointer;padding:4px;border-radius:5px;display:grid;place-items:center}
 .x:hover{background:var(--hover);color:var(--ink)}
@@ -204,13 +204,37 @@ code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--pane
 .filters button.tg.act i{background:var(--ink);border-color:var(--ink);color:var(--bg)}
 .filters button.tg svg{width:9px;height:9px}
 
+/* fluxo de código */
+.peek.wide{width:min(660px,calc(100% - 28px));top:76px}
+.fpath{margin-top:10px;font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2);word-break:break-all}
+.code{margin-top:8px;border:1px solid var(--line2);border-radius:8px;background:var(--panel2);overflow:hidden}
+.code .ch{display:flex;align-items:center;gap:8px;padding:5px 6px 5px 10px;border-bottom:1px solid var(--line);font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted)}
+.code .ch .fn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.code .cb{display:flex;overflow-x:auto}
+.code pre{margin:0;padding:10px 0;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;tab-size:2}
+.code .gut{padding:10px 8px 10px 10px;text-align:right;color:var(--faint);user-select:none;border-right:1px solid var(--line);flex:none;position:sticky;left:0;background:var(--panel2)}
+.code .src{padding:10px 14px;color:var(--ink2);flex:1}
+.code .cnote{padding:6px 10px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted)}
+.tk-k{color:var(--rec)}.tk-s{color:var(--done)}.tk-c{color:var(--faint);font-style:italic}.tk-n{color:var(--warn)}.tk-f{color:var(--chg)}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:6px;overflow:hidden;flex:none}
+.seg button{border:0;background:none;padding:2px 9px;font-size:11.5px;color:var(--muted);cursor:pointer}
+.seg button+button{border-left:1px solid var(--line2)}
+.seg button.act{background:var(--panel);color:var(--ink)}
+.flowbar{gap:10px}
+.flowbar .btn{flex:none}
+.flowbar select{height:30px;flex:0 1 300px;min-width:0;border:1px solid var(--line2);border-radius:7px;background:var(--panel2);color:var(--ink);font:inherit;font-weight:500;padding:0 8px;cursor:pointer}
+.flowbar .bt div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mth{display:inline-block;min-width:44px;text-align:center;font:600 10.5px/20px ui-monospace,SFMono-Regular,Menlo,monospace;border-radius:5px;border:1px solid var(--line2);color:var(--ink2);padding:0 5px}
+
 @media (max-width:720px){
   .top{gap:8px;padding:0 12px}
   .pname{max-width:120px;overflow:hidden;text-overflow:ellipsis}
   .tag,.live{display:none}
   .map{height:72vh;min-height:420px}
   .legend{display:none}
-  .peek{left:14px;right:14px;width:auto;top:auto;bottom:62px;max-height:60%}
+  .peek,.peek.wide{left:14px;right:14px;width:auto;top:auto;bottom:62px;max-height:60%}
+  .flowbar .bt{display:none}
+  .flowbar select{flex:1 1 auto}
   .row{grid-template-columns:70px minmax(0,1fr)}
   .row .rr{grid-column:2;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:flex-start;gap:4px 10px}
   .row .rc{grid-column:2;justify-content:flex-start}
@@ -266,6 +290,23 @@ const UI = {
   close:'<path d="M18 6 6 18M6 6l12 12"/>', warn:'<path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/>',
   check:'<path d="M20 6 9 17l-5-5"/>', down:'<path d="M12 5v14M19 12l-7 7-7-7"/>'
 };
+// Ícones dos passos de um fluxo de código.
+const STEP_ICONS = {
+  route:'<circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M6 15V3M18 9a9 9 0 01-9 9"/>',
+  middleware:'<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>',
+  validator:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+  controller:'<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+  action:'<path d="M6 3l14 9-14 9V3z"/>',
+  service:ICONS.service,
+  repository:'<path d="M4 19.5A2.5 2.5 0 016.5 17H20V2H6.5A2.5 2.5 0 004 4.5v15z"/><path d="M8 7h8M8 11h6"/>',
+  model:'<path d="M8 3H7a2 2 0 00-2 2v5a2 2 0 01-2 2 2 2 0 012 2v5a2 2 0 002 2h1M16 21h1a2 2 0 002-2v-5a2 2 0 012-2 2 2 0 01-2-2V5a2 2 0 00-2-2h-1"/>',
+  database:ICONS.database, external:ICONS.external, queue:ICONS.queue, job:ICONS.worker,
+  response:'<path d="M9 10l-5 5 5 5"/><path d="M20 4v7a4 4 0 01-4 4H4"/>',
+  util:'<path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>',
+  config:'<circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.2 4.2l2.8 2.8M17 17l2.8 2.8M1 12h4M19 12h4M4.2 19.8 7 17M17 7l2.8-2.8"/>',
+  test:'<path d="M9 3h6M10 3v6L4 20a1 1 0 001 1h14a1 1 0 001-1L14 9V3"/>'
+};
+const STEP_NAME = {route:'Rota',middleware:'Middleware',validator:'Validação',controller:'Controller',action:'Action',service:'Service',repository:'Repositório',model:'Model',database:'Banco',external:'Externo',queue:'Fila',job:'Job',response:'Resposta',util:'Utilitário',config:'Config',test:'Teste'};
 // Logo pelo nome/tecnologia quando o nó não traz "logo" (slug do Simple Icons ou URL).
 const LOGO_GUESS = [
   ['next.js','nextdotjs'],['nextjs','nextdotjs'],['vercel','vercel'],['supabase','supabase'],['postgres','postgresql'],['mysql','mysql'],
@@ -294,6 +335,7 @@ function logoOf(n){
 }
 let simple = true; try { simple = localStorage.getItem('sd_simple') !== '0'; } catch (e) {}
 function tileHtml(n){
+  if (n._step) return `<div class="tile">${svgI(STEP_ICONS[n.type] || STEP_ICONS.util)}</div>`;
   const t = ICONS[n.type] ? n.type : 'service', url = simple ? '' : logoOf(n);
   if (url) return `<div class="tile logo"><img src="${esc(url)}" alt="" draggable="false" data-t="${t}"></div>`;
   return `<div class="tile">${svgI(ICONS[t])}</div>`;
@@ -315,6 +357,7 @@ const sev = ([t, c]) => `<span class="sev" style="--c:var(${c})">${esc(t)}</span
 
 /* ---------- estado ---------- */
 let S = null, tab = null, selNode = null, selLimit = null, hover = null, changesOn = false, live = false, lastRaw = '';
+let flowSel = null, codeRecs = false, codeView = 'new', peekCode = '';
 let limitFilter = 'all', cveFilter = 'all', cveHideDev = false, cveAll = false, listTab = null;
 let COPY = [], LTOOLS = '', peekCopy = '';
 const views = {};
@@ -330,7 +373,72 @@ function consumeChanges(){
 }
 
 /* ---------- modelo por aba ---------- */
+/* ---------- fluxos de código ---------- */
+function flowsList(){
+  const p = S.pending;
+  let fl = (S.map.flows || []).map(f => ({...f, _kind:'normal'}));
+  if (p) {
+    const ch = {}; (p.change_flows||[]).forEach(f => ch[f.id] = f);
+    const rm = new Set(p.remove_flows||[]);
+    fl = fl.map(f => ch[f.id] ? {...ch[f.id], _kind:'changed'} : rm.has(f.id) ? {...f, _kind:'removed'} : f);
+    (p.add_flows||[]).forEach(f => fl.push({...f, _kind:'new'}));
+  }
+  return fl;
+}
+const FLOW_KIND = {new:'proposto', changed:'alteração proposta', removed:'remoção proposta'};
+const flowTitle = f => { const h = [f.method, f.route].filter(Boolean).join(' '); return h && f.label ? `${h} · ${f.label}` : (h || f.label || f.id); };
+function curFlow(){ const fl = flowsList(); return fl.find(f => f.id === flowSel) || fl[0] || null; }
+function flowEdges(f){ if (f.edges && f.edges.length) return f.edges; const st = f.steps || []; return st.slice(1).map((s, i) => ({from: st[i].id, to: s.id})); }
+const frecs = f => ({steps:[], edges:[], remove_edges:[], changes:[], ...(f.recommendations || {})});
+function codeModel(){
+  const f = curFlow(); if (!f) return {nodes:[], edges:[], limits:[], recs:[], flow:null};
+  const r = frecs(f), chg = {}; r.changes.forEach(c => chg[c.step] = c);
+  const nodes = (f.steps || []).map(s => ({...s, _step:true, kind: codeRecs && chg[s.id] ? 'changed' : 'normal', _change: codeRecs ? chg[s.id] : null}));
+  const edges = flowEdges(f).map(e => ({...e, kind:'normal'}));
+  if (codeRecs) {
+    const rm = new Set(r.remove_edges.map(e => e.from+'>'+e.to));
+    edges.forEach(e => { if (rm.has(e.from+'>'+e.to)) e.kind = 'removed'; });
+    r.steps.forEach(s => nodes.push({...s, _step:true, kind:'rec'}));
+    r.edges.forEach(e => edges.push({...e, kind:'rec'}));
+  }
+  const recs = [...r.steps.map(s => ({...s, _step:true, kind:'rec'})), ...r.changes];
+  const ids = new Set(nodes.map(n => n.id));
+  return {nodes, edges: edges.filter(e => ids.has(e.from) && ids.has(e.to)), limits:[], recs, flow:f};
+}
+
+/* realce de sintaxe simples (JS/TS, Python, SQL, JSON, shell) */
+const KW = new Set(('import export from default const let var function return if else for while do switch case break continue new try catch finally throw async await class extends interface type enum implements public private protected readonly static of in as typeof instanceof void null undefined true false this super yield '
+  + 'def lambda pass raise with elif except None True False self and or not is fn pub mut impl struct use mod package func go defer chan select '
+  + 'insert into update delete where values returning set order by limit join on group having create table begin commit').split(' '));
+const STR_RE = String.raw`\x60(?:\\[\s\S]|[^\x60\\])*\x60|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'`;
+function hl(code, lang){
+  const l = String(lang || '').toLowerCase(), sql = l === 'sql';
+  const com = [sql ? String.raw`--[^\n]*` : String.raw`\/\/[^\n]*`, String.raw`\/\*[\s\S]*?\*\/`];
+  if (/^(py|python|sh|bash|shell|zsh|yaml|yml|rb|ruby|toml|dockerfile|ini|conf)$/.test(l)) com.unshift('#[^\\n]*');
+  const re = new RegExp(`(${com.join('|')})|(${STR_RE})|(\\b\\d[\\d_.]*\\b)|([A-Za-z_$][\\w$]*)`, 'g');
+  const sp = (c, t) => `<span class="tk-${c}">${esc(t)}</span>`;
+  let out = '', last = 0, m;
+  while ((m = re.exec(code))) {
+    out += esc(code.slice(last, m.index));
+    const [t, c, st, n, w] = m;
+    if (c) out += sp('c', t); else if (st) out += sp('s', t); else if (n) out += sp('n', t);
+    else if (KW.has(sql ? w.toLowerCase() : w)) out += sp('k', t);
+    else if (/^\s*\(/.test(code.slice(re.lastIndex, re.lastIndex + 8))) out += sp('f', t);
+    else out += esc(t);
+    last = re.lastIndex;
+  }
+  return out + esc(code.slice(last));
+}
+function codeBlock(code, lang, start, title, note){
+  peekCode = code;
+  const n = code.split('\n').length, s0 = +start || 1;
+  const gut = Array.from({length:n}, (_, i) => s0 + i).join('\n');
+  return `<div class="code"><div class="ch"><span class="fn" title="${esc(title)}">${esc(title)}</span><button class="cp" id="codecp" title="Copiar o código">${svgI(CP_ICON)}Copiar</button></div><div class="cb"><pre class="gut">${gut}</pre><pre class="src">${hl(code, lang)}</pre></div>${note ? `<div class="cnote">${esc(note)}</div>` : ''}</div>`;
+}
+const langOf = s => s.lang || ((s.file || '').split('.').pop() || '');
+
 function model(t){
+  if (t === 'code') return codeModel();
   const m = S.map, p = S.pending, ch = S.changes;
   const nodes = m.nodes.map(n => ({...n, kind:'normal'}));
   const edges = m.edges.map(e => ({...e, kind:'normal'}));
@@ -475,6 +583,10 @@ const ECOL = {normal:'--edge', hot:'--ink', rec:'--rec', new:'--new', del:'--del
 function renderMap(){
   const el = $('#map'), upd = tab === 'update';
   M = model(tab);
+  if (!M.nodes.length && tab === 'code') {
+    el.innerHTML = `<div class="empty"><div>${M.flow ? 'Este fluxo ainda não tem passos.' : 'Nenhum fluxo de código mapeado.<br>Peça ao Claude para mapear as rotas com a skill system-design.'}</div></div>` + flowBarHtml();
+    bindBar(); return;
+  }
   if (!M.nodes.length) {
     el.innerHTML = `<div class="empty"><div>O mapa ainda está vazio.<br>${S.pending ? 'Abra a aba Atualização para revisar a arquitetura proposta.' : 'Peça ao Claude para analisar o projeto ou planejar a arquitetura com a skill system-design.'}</div></div>` + barHtml();
     bindBar(); return;
@@ -503,20 +615,21 @@ function renderMap(){
     if (lim) { cls.push('alert'); const c = SEV[lim.severity||'info'][1]; flag = `<span class="flag" style="background:var(${c})">${svgI(UI.warn)}</span>`; }
     else if (upd && n.state === 'done') flag = `<span class="flag" style="background:var(--done)">${svgI(UI.check)}</span>`;
     const chips = [];
-    if (KIND[n.kind]) chips.push(chip(KIND[n.kind]));
+    if (KIND[n.kind]) chips.push(chip(n._step && n.kind === 'changed' ? ['Alterar', '--chg'] : KIND[n.kind]));
     if (upd && n.state && STATE[n.state]) chips.push(chip(STATE[n.state]));
     const style = `left:${p.x}px;top:${p.y}px` + (lim ? `;--sev:var(${SEV[lim.severity||'info'][1]})` : '');
     nodes += `<div class="${cls.join(' ')}" data-id="${esc(n.id)}" style="${style}">${M.edges.some(e => e.to === n.id) ? '<span class="h in"></span>' : ''}${M.edges.some(e => e.from === n.id) ? '<span class="h out"></span>' : ''}<div class="box">${tileHtml(n)}</div>${flag}
-      <div class="nl"><div class="t1">${esc(simple ? (TYPE_NAME[n.type] || 'Serviço') : (n.label || n.id))}</div><div class="t2">${esc(simple ? (n.label || n.id) : (n.tech || TYPE_NAME[n.type] || ''))}</div>${chips.length ? `<div class="chips">${chips.join('')}</div>` : ''}</div></div>`;
+      <div class="nl"><div class="t1">${esc(n._step ? (simple ? (STEP_NAME[n.type] || 'Passo') : (n.label || n.id)) : simple ? (TYPE_NAME[n.type] || 'Serviço') : (n.label || n.id))}</div><div class="t2">${esc(n._step ? (simple ? (n.label || n.id) : (n.file || STEP_NAME[n.type] || '')) : simple ? (n.label || n.id) : (n.tech || TYPE_NAME[n.type] || ''))}</div>${chips.length ? `<div class="chips">${chips.join('')}</div>` : ''}</div></div>`;
   });
   let legend = '';
+  if (tab === 'code' && codeRecs) legend += `<span><i class="d" style="--c:var(--rec)"></i>Passo recomendado</span><span><i style="--c:var(--chg)"></i>Código a alterar</span><span><i class="d" style="--c:var(--del)"></i>Substituída</span>`;
   if (tab === 'recs') legend += `<span><i class="d" style="--c:var(--rec)"></i>Recomendado</span><span><i class="d" style="--c:var(--del)"></i>Substituída</span>`;
   if (upd) legend += `<span><i style="--c:var(--new)"></i>Novo</span><span><i style="--c:var(--chg)"></i>Alterado</span><span><i class="d" style="--c:var(--del)"></i>Removido</span><span><i class="d" style="--c:var(--info)"></i>Em espera</span><span><i style="--c:var(--prog)"></i>Implementando</span><span><i style="--c:var(--done)"></i>Implementado</span>`;
   if (tab === 'current' && changesOn) legend += `<span><i style="--c:var(--new)"></i>Novo</span><span><i style="--c:var(--chg)"></i>Alterado</span>`;
   el.innerHTML = `<div class="world" id="world"><svg width="1" height="1"><defs>${defs}</defs>${paths}</svg>${labels}${nodes}</div>
     <div class="tools"><button id="zin" title="Aproximar">${svgI(UI.plus)}</button><button id="zout" title="Afastar">${svgI(UI.minus)}</button><button id="zfit" title="Ajustar à tela">${svgI(UI.fit)}</button><button id="simple" class="wide ${simple ? 'act' : ''}" aria-pressed="${simple}" title="Mostrar só o tipo de cada componente">${svgI(UI.layers)}${simple ? 'Simplificado' : 'Detalhado'}</button></div>
     <div class="hint"><span>Arraste para mover · ${MOD} + rolagem para zoom</span><button id="godown">Listas ${svgI(UI.down).replace('<svg','<svg width="12" height="12" style="vertical-align:-2px"')}</button></div>
-    ${legend ? `<div class="legend">${legend}</div>` : ''}${barHtml()}${limitBarHtml()}${peekHtml()}`;
+    ${legend ? `<div class="legend">${legend}</div>` : ''}${barHtml()}${flowBarHtml()}${limitBarHtml()}${peekHtml()}`;
   fixImgs(el);
   setupView();
   bindBar();
@@ -541,6 +654,13 @@ function barHtml(){
   }
   return '';
 }
+function flowBarHtml(){
+  if (tab !== 'code' || !M.flow) return '';
+  const f = M.flow, r = frecs(f), nrec = r.steps.length + r.changes.length;
+  const opts = flowsList().map(x => `<option value="${esc(x.id)}" ${x.id === f.id ? 'selected' : ''}>${esc(flowTitle(x) + (FLOW_KIND[x._kind] ? ' (' + FLOW_KIND[x._kind] + ')' : ''))}</option>`).join('');
+  const where = f.node ? nodeLabel(f.node) : '';
+  return `<div class="float bar flowbar"><select id="flowsel" aria-label="Fluxo">${opts}</select><div class="bt"><div title="${esc(f.description || '')}">${esc([where && 'Em ' + where, f.description].filter(Boolean).join(' · '))}</div></div><button class="btn ${codeRecs ? '' : 'sec'}" id="coderecs" aria-pressed="${codeRecs}" ${nrec ? '' : 'disabled'}>Com recomendações${nrec ? ' · ' + nrec : ''}</button></div>`;
+}
 function limitBarHtml(){
   const l = selLimit && M.limits.find(x => x.id === selLimit);
   if (!l || (tab === 'update' && S.pending) || (tab === 'current' && changesOn)) return '';
@@ -548,9 +668,44 @@ function limitBarHtml(){
   return `<div class="float bar"><div class="bt"><b>${esc(l.label)}: ${esc(l.value || '')}</b><div>${esc(n.label || l.node)} · ${esc(SCOPE_NAME[l.scope||'service'])}${l.note ? ' · ' + esc(l.note) : ''}</div></div>${sev(SEV[l.severity||'info'])}<button class="x" id="clearlim" title="Limpar">${svgI(UI.close).replace('<svg','<svg width="15" height="15"')}</button></div>`;
 }
 
+function stepPeekHtml(n){
+  const f = M.flow, outs = M.edges.filter(e => e.from === n.id), ins = M.edges.filter(e => e.to === n.id);
+  const lab = id => (M.nodes.find(x => x.id === id) || {}).label || id;
+  const link = (id, extra) => `<a class="lnk" data-node="${esc(id)}">${esc(lab(id))}</a>${extra ? ` <span style="color:var(--muted)">(${esc(extra)})</span>` : ''}`;
+  const ch = n._change;
+  peekCopy = n.kind === 'rec' ? codeRecPrompt([n]) : ch ? codeRecPrompt([ch]) : '';
+  let h = `<div class="float peek wide"><div style="display:flex;gap:8px;align-items:flex-start"><h2 style="flex:1">${tileHtml(n)}${esc(n.label || n.id)}</h2><button class="x" id="unsel" title="Fechar">${svgI(UI.close).replace('<svg','<svg width="15" height="15"')}</button></div>`;
+  const chips = [chip([STEP_NAME[n.type] || n.type || 'Passo', '--info'])];
+  if (KIND[n.kind]) chips.push(chip(n.kind === 'changed' ? ['Alteração recomendada', '--chg'] : KIND[n.kind]));
+  h += `<div style="display:flex;gap:4px;margin-top:10px;flex-wrap:wrap">${chips.join('')}</div>`;
+  if (n.file) h += `<div class="fpath">${esc(n.file)}${n.lines ? ':' + esc(n.lines) : ''}</div>`;
+  if (n.summary) h += `<div class="sub">O que faz</div><p style="margin-top:4px">${esc(n.summary)}</p>`;
+  const comp = n.node ? ((S.map.nodes.find(x => x.id === n.node) || ((S.map.recommendations || {}).nodes || []).find(x => x.id === n.node)) || {}) : null;
+  const props = [['Símbolo', n.symbol && esc(n.symbol)], ['Linguagem', langOf(n) && esc(langOf(n))], ['Componente', comp && `<a class="lnk" data-goto="${esc(n.node)}">${esc(comp.label || n.node)}</a>`], ['Prioridade', n.priority && esc(n.priority)], ['Esforço', n.effort && esc(n.effort)]].filter(x => x[1]);
+  if (props.length) h += `<div class="props">${props.map(([k,v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div>`;
+  if (n.why) h += `<div class="sub">Por que</div><p style="margin-top:4px">${esc(n.why)}</p>`;
+  if (ch) h += `<div class="sub">Recomendação</div><p style="margin-top:4px"><b style="color:var(--ink);font-weight:500">${esc(ch.label || 'Alterar este passo')}</b>${ch.why ? '. ' + esc(ch.why) : ''}</p><div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">${sev(PRIO[ch.priority || 'media'] || PRIO.media)}${ch.effort ? chip(['Esforço ' + ch.effort, '--info']) : ''}</div>`;
+  if (ins.length) h += `<div class="sub">Recebe de</div><p style="margin-top:4px">${ins.map(e => link(e.from, e.label)).join(', ')}</p>`;
+  if (outs.length) h += `<div class="sub">Envia para</div><p style="margin-top:4px">${outs.map(e => link(e.to, e.label)).join(', ')}</p>`;
+  const title = (n.file || n.label || n.id) + (n.lines ? ':' + n.lines : '');
+  peekCode = '';
+  if (ch && ch.code) {
+    const cur = codeView === 'cur' && n.code;
+    h += `<div class="sub" style="display:flex;align-items:center;justify-content:space-between;gap:8px">Código<span class="seg"><button data-cv="cur" class="${cur ? 'act' : ''}" ${n.code ? '' : 'disabled'}>Atual</button><button data-cv="new" class="${cur ? '' : 'act'}">Sugerido</button></span></div>`;
+    h += cur ? codeBlock(n.code, langOf(n), n.code_start, title, n.code_note) : codeBlock(ch.code, ch.lang || langOf(n), 1, title + ' (sugerido)', '');
+  } else if (n.code) {
+    h += `<div class="sub">${n.kind === 'rec' ? 'Código sugerido' : 'Código'}</div>` + codeBlock(n.code, langOf(n), n.code_start, title, n.code_note);
+  } else if (n.file) {
+    h += `<div class="sub">Código</div><div class="none" style="padding:6px 0">${esc(n.code_note || 'Sem código. Preencha code ou confira file e lines no map.json.')}</div>`;
+  }
+  if (peekCopy) h += `<div class="peekfoot"><button class="btn sec" id="peekcp" title="Copiar para colar no Claude">${svgI(CP_ICON).replace('<svg', '<svg width="14" height="14" style="vertical-align:-2px;margin-right:6px"')}${n.kind === 'rec' ? 'Implementar no agente' : 'Aplicar no agente'}</button></div>`;
+  return h + '</div>';
+}
+
 function peekHtml(){
   const n = selNode && M.nodes.find(x => x.id === selNode);
   if (!n) return '';
+  if (n._step) return stepPeekHtml(n);
   const lims = M.limits.filter(l => l.node === n.id && l.kind !== 'removed');
   const outs = M.edges.filter(e => e.from === n.id), ins = M.edges.filter(e => e.to === n.id);
   const lab = id => (M.nodes.find(x => x.id === id) || {}).label || id;
@@ -584,12 +739,13 @@ function bounds(ids){
 function setupView(){
   const map = $('#map'), world = $('#world');
   const fitKey = Object.keys(P).sort().join(',');
-  let v = views[tab];
+  const vk = tab === 'code' ? 'code:' + (M.flow ? M.flow.id : '') + ':' + codeRecs : tab;
+  let v = views[vk];
   const apply = smooth => { world.style.transition = smooth ? 'transform .35s ease' : ''; world.style.transform = `translate(${v.x}px,${v.y}px) scale(${v.k})`; };
   const fit = smooth => {
     const r = map.getBoundingClientRect(), b = bounds(Object.keys(P)), pad = 70;
     const k = Math.max(.35, Math.min(1.05, (r.width - pad*2) / (b.x1-b.x0), (r.height - pad*2 - 110) / (b.y1-b.y0)));
-    v = views[tab] = {x:(r.width - (b.x1-b.x0)*k)/2 - b.x0*k, y:(r.height - 100 - (b.y1-b.y0)*k)/2 - b.y0*k + 10, k, fitKey};
+    v = views[vk] = {x:(r.width - (b.x1-b.x0)*k)/2 - b.x0*k, y:(r.height - 100 - (b.y1-b.y0)*k)/2 - b.y0*k + 10, k, fitKey};
     apply(smooth);
   };
   window.__center = id => { const p = P[id]; if (!p) return; const r = map.getBoundingClientRect(); v.k = Math.max(v.k, .85); v.x = r.width/2 - (p.x + N/2) * v.k; v.y = r.height/2 - (p.y + N/2) * v.k; apply(true); };
@@ -709,6 +865,41 @@ function cvesSection(){
   return h + '</div>';
 }
 
+function filesSection(){
+  const f = M.flow;
+  if (!f) return '<div class="sec"><div class="none">Nenhum fluxo de código mapeado.</div></div>';
+  let h = `<div class="sec"><div class="sh"><span class="meta">${esc(flowTitle(f))} · ${M.nodes.length} passos · clique para ver o código</span></div>`;
+  return h + M.nodes.map(n => {
+    const meta = [n.file ? `<b>${esc(n.file + (n.lines ? ':' + n.lines : ''))}</b>` : '', n.symbol ? esc(n.symbol) : ''].filter(Boolean).join(' · ');
+    const tags = [];
+    if (n.kind === 'rec') tags.push(chip(KIND.rec)); if (n.kind === 'changed') tags.push(chip(['Alterar', '--chg']));
+    return `<div class="row ${selNode === n.id ? 'act' : ''}" data-step="${esc(n.id)}">${sev([STEP_NAME[n.type] || 'Passo', '--info'])}<div><div class="rt">${esc(n.label || n.id)}</div>${meta ? `<div class="rm">${meta}</div>` : ''}${n.summary ? `<div class="rn">${esc(n.summary)}</div>` : ''}</div>${tags.length ? `<div class="rr">${tags.join('')}</div>` : '<div></div>'}<div></div></div>`;
+  }).join('') + '</div>';
+}
+function codeRecsSection(){
+  const f = M.flow, order = ['alta','media','baixa'];
+  const rs = M.recs.slice().sort((a,b) => order.indexOf(a.priority||'media') - order.indexOf(b.priority||'media'));
+  let h = `<div class="sec"><div class="sh"><span class="meta">Clique para ver no fluxo com recomendações</span>${rs.length ? copyBtn(codeRecPrompt(rs), `Copiar ${rs.length === 1 ? '1 item' : rs.length + ' itens'}`, true) : ''}</div>`;
+  if (!rs.length) return h + '<div class="none">Nenhuma recomendação para este fluxo.</div></div>';
+  const stepOf = id => (f.steps || []).find(s => s.id === id) || {};
+  return h + rs.map(r => {
+    const isNew = !!r._step, s = isNew ? r : stepOf(r.step);
+    const title = isNew ? `Novo ${(STEP_NAME[r.type] || 'passo').toLowerCase()}: ${r.label}` : `${s.label || r.step}: ${r.label || 'alterar'}`;
+    const meta = [isNew ? 'Novo passo' : 'Alterar código', s.file ? esc(s.file) : '', r.effort ? 'Esforço ' + esc(r.effort) : ''].filter(Boolean).join(' · ');
+    return `<div class="row" data-step="${esc(isNew ? r.id : r.step)}" data-rec="1">${sev(PRIO[r.priority||'media'] || PRIO.media)}<div><div class="rt">${esc(title)}</div><div class="rm">${meta}</div>${r.why ? `<div class="rn">${esc(r.why)}</div>` : ''}</div><div></div><div class="rc">${copyBtn(codeRecPrompt([r]), isNew ? 'Implementar no agente' : 'Aplicar no agente')}</div></div>`;
+  }).join('') + '</div>';
+}
+function flowsSection(){
+  const fl = flowsList(), cur = M.flow;
+  let h = `<div class="sec"><div class="sh"><span class="meta">${fl.length} fluxo(s) mapeado(s)</span></div>`;
+  return h + fl.map(f => {
+    const r = frecs(f), nrec = r.steps.length + r.changes.length;
+    const meta = [`${(f.steps || []).length} passos`, nrec ? `${nrec} recomendação(ões)` : '', f.node ? 'em ' + esc(nodeLabel(f.node)) : ''].filter(Boolean).join(' · ');
+    const tag = FLOW_KIND[f._kind] ? chip([FLOW_KIND[f._kind], f._kind === 'removed' ? '--del' : f._kind === 'new' ? '--new' : '--chg']) : '';
+    return `<div class="row ${cur && cur.id === f.id ? 'act' : ''}" data-flow="${esc(f.id)}"><span class="mth">${esc(f.method || 'FLUXO')}</span><div><div class="rt">${esc(f.route || f.label || f.id)}${f.route && f.label ? ` <span style="color:var(--muted);font-weight:400">· ${esc(f.label)}</span>` : ''}</div><div class="rm">${meta}</div>${f.description ? `<div class="rn">${esc(f.description)}</div>` : ''}</div>${tag ? `<div class="rr">${tag}</div>` : '<div></div>'}<div></div></div>`;
+  }).join('') + '</div>';
+}
+
 /* ---------- texto para colar no Claude ---------- */
 const CP_ICON = '<path d="M9 9h10a2 2 0 012 2v8a2 2 0 01-2 2H9a2 2 0 01-2-2v-8a2 2 0 012-2z"/><path d="M5 15H4a1 1 0 01-1-1V5a2 2 0 012-2h9a1 1 0 011 1v1"/>';
 function copyBtn(text, label, all){ COPY.push(text); return `<button class="cp ${all ? 'all' : ''}" data-cp="${COPY.length - 1}" title="Copiar para colar no Claude">${svgI(CP_ICON)}${label || 'Copiar'}</button>`; }
@@ -757,17 +948,43 @@ function cvePrompt(vs){
   const files = ((S.cves || {}).files || []).join(', ') || 'o lockfile';
   return `Corrija ${vs.length > 1 ? 'estas vulnerabilidades' : 'esta vulnerabilidade'} nas dependências do projeto ${projName()} (lidas de ${files}).\n\n${body}\n\nAtualize cada pacote para a versão indicada. Se for dependência transitiva, atualize o pacote que a traz ou use overrides. Confira as notas de versão quando a atualização for de versão maior. Depois rode a instalação, o build e os testes, rode python3 .system-design/sd.py cves para confirmar que os avisos sumiram e me diga o resultado.`;
 }
+const fence = (code, lang) => '```' + (lang || '') + '\n' + code + '\n```';
+function codeRecPrompt(rs){
+  const f = M.flow || curFlow(), r0 = frecs(f);
+  const stepLab = id => ((f.steps || []).concat(r0.steps).find(s => s.id === id) || {}).label || id;
+  const body = rs.map((r, i) => {
+    const pre = rs.length > 1 ? (i+1) + '. ' : '';
+    const prio = `   Prioridade: ${(PRIO[r.priority||'media'] || PRIO.media)[0]}.${r.effort ? ' Esforço: ' + r.effort + '.' : ''}`;
+    if (r.step) {
+      const s = (f.steps || []).find(x => x.id === r.step) || {};
+      return [`${pre}Alterar ${s.label || r.step} (${s.file ? s.file + (s.lines ? ':' + s.lines : '') : 'sem arquivo'}): ${r.label || ''}`, prio,
+        r.why ? `   Por que: ${r.why}` : '', r.code ? 'Código sugerido:\n' + fence(r.code, r.lang || langOf(s)) : ''].filter(Boolean).join('\n');
+    }
+    const conn = r0.edges.filter(e => e.from === r.id || e.to === r.id).map(e => `${stepLab(e.from)} -> ${stepLab(e.to)}`);
+    const before = new Set(r0.edges.filter(e => e.to === r.id).map(e => e.from)), after = new Set(r0.edges.filter(e => e.from === r.id).map(e => e.to));
+    const out = r0.remove_edges.filter(e => before.has(e.from) || after.has(e.to)).map(e => `${stepLab(e.from)} -> ${stepLab(e.to)}`);
+    return [`${pre}Novo passo: ${r.label} (${STEP_NAME[r.type] || r.type || 'passo'}${r.file ? ', arquivo ' + r.file : ''})`, prio,
+      r.summary ? `   Função: ${r.summary}` : '', r.why ? `   Por que: ${r.why}` : '',
+      conn.length ? `   Entra no fluxo: ${conn.join(', ')}` : '', out.length ? `   Substitui: ${[...new Set(out)].join(', ')}` : '',
+      r.code ? 'Código sugerido:\n' + fence(r.code, langOf(r)) : ''].filter(Boolean).join('\n');
+  }).join('\n\n');
+  return `Implemente ${rs.length > 1 ? 'estas recomendações' : 'esta recomendação'} no fluxo de código ${flowTitle(f)} do projeto ${projName()}.\n\n${body}\n\nO código sugerido é um ponto de partida: adapte aos padrões e aos nomes do projeto. ${RULE}\nAo terminar, atualize o fluxo ${f.id} em flows no .system-design/map.json (passos, arquivos, linhas e conexões), tire a recomendação implementada e rode python3 .system-design/sd.py build. Depois rode o build e os testes do projeto e me diga o resultado.`;
+}
 let toastT = null;
 function toast(msg){ let el = $('#toast'); if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; document.body.appendChild(el); } el.textContent = msg; el.style.opacity = 1; clearTimeout(toastT); toastT = setTimeout(() => el.style.opacity = 0, 1800); }
-async function copyText(text){
+async function copyText(text, msg){
   try { await navigator.clipboard.writeText(text); }
   catch (e) { const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = 0; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
-  toast('Copiado. Cole no Claude.');
+  toast(msg || 'Copiado. Cole no Claude.');
 }
 
 /* ---------- abas das listas ---------- */
 function listTabs(){
   const out = [];
+  if (tab === 'code') {
+    out.push(['files', 'Arquivos do fluxo', M.nodes.length], ['coderecs', 'Recomendações', M.recs.length], ['flows', 'Fluxos', flowsList().length]);
+    return out;
+  }
   if (tab === 'update' && S.pending) out.push(['update', 'Atualização', Object.keys(S.pending.items || {}).length]);
   if (tab === 'current' && changesOn && S.changes) out.push(['changes', 'O que mudou', '']);
   out.push(['limits', 'Limitações', M.limits.filter(l => l.kind !== 'removed' || tab === 'update').length]);
@@ -779,7 +996,7 @@ function renderLists(){
   COPY = []; LTOOLS = '';
   const tabs = listTabs();
   if (!tabs.find(x => x[0] === listTab)) listTab = tabs[0][0];
-  const body = {update: updateSection, changes: changesSection, limits: limitsSection, recs: recsSection, cves: cvesSection}[listTab]();
+  const body = {update: updateSection, changes: changesSection, limits: limitsSection, recs: recsSection, cves: cvesSection, files: filesSection, coderecs: codeRecsSection, flows: flowsSection}[listTab]();
   const old = $('#lists .lbody'), top = old ? old.scrollTop : 0;
   $('#lists').innerHTML = `<div class="lhead"><nav class="ltabs">${tabs.map(([k, n, c]) => `<button class="ltab ${listTab === k ? 'act' : ''}" data-ltab="${k}">${n}${c !== '' ? `<span class="cnt">${c}</span>` : ''}</button>`).join('')}</nav><div class="ltools">${LTOOLS}</div></div><div class="lbody">${body}</div>`;
   const nb = $('#lists .lbody'); if (nb) nb.scrollTop = top;
@@ -789,6 +1006,7 @@ function renderLists(){
 function renderHeader(){
   const m = S.map, pr = m.project || {};
   const tabs = []; if (S.pending) tabs.push(['update','Atualização']); tabs.push(['current','Mapa atual'], ['recs','Com recomendações']);
+  const nf = flowsList().length; if (nf) tabs.push(['code','Fluxo de código']);
   if (!tabs.find(t => t[0] === tab)) tab = tabs[0][0];
   document.title = (pr.name || 'Projeto') + ' · System Design';
   $('#pname').textContent = pr.name || 'Projeto';
@@ -796,7 +1014,7 @@ function renderHeader(){
   $('#upd').textContent = m.updated ? 'Atualizado ' + fmt(m.updated) : (pr.hosting && pr.hosting.provedor) || '';
   $('#upd').style.display = $('#upd').textContent ? '' : 'none';
   const rc = (m.recommendations || {}).nodes || [];
-  $('#tabs').innerHTML = tabs.map(([k,n]) => `<button class="tab ${tab===k?'act':''}" data-tab="${k}">${n}${k==='update' ? `<span class="cnt">${esc(({proposed:'aguardando', approved:'aprovada', in_progress:'em andamento', rejected:'rejeitada'})[S.pending.status] || '')}</span>` : k==='recs' && rc.length ? `<span class="cnt">${rc.length}</span>` : ''}</button>`).join('');
+  $('#tabs').innerHTML = tabs.map(([k,n]) => `<button class="tab ${tab===k?'act':''}" data-tab="${k}">${n}${k==='update' ? `<span class="cnt">${esc(({proposed:'aguardando', approved:'aprovada', in_progress:'em andamento', rejected:'rejeitada'})[S.pending.status] || '')}</span>` : k==='recs' && rc.length ? `<span class="cnt">${rc.length}</span>` : k==='code' ? `<span class="cnt">${nf}</span>` : ''}</button>`).join('');
   document.querySelectorAll('.tab').forEach(b => b.onclick = () => { tab = b.dataset.tab; selNode = null; history.replaceState(null, '', '#' + tab); renderAll(); });
 }
 function renderAll(){ if (!S) return; renderHeader(); renderMap(); renderLists(); bindLists(); }
@@ -816,12 +1034,19 @@ function bindLists(){
   document.querySelectorAll('.filters[data-group]').forEach(f => f.querySelectorAll('button').forEach(b => b.onclick = () => { if (f.dataset.group === 'limit') limitFilter = b.dataset.v; else { cveFilter = b.dataset.v; cveAll = false; } renderLists(); bindLists(); }));
   const hd = $('#hidedev'); if (hd) hd.onclick = () => { cveHideDev = !cveHideDev; renderLists(); bindLists(); };
   const ca = $('#cveall'); if (ca) ca.onclick = () => { cveAll = true; renderLists(); bindLists(); };
+  document.querySelectorAll('#lists [data-step]').forEach(r => r.onclick = () => { if (r.dataset.rec) codeRecs = true; selNode = r.dataset.step; selLimit = null; renderAll(); window.scrollTo({top:0, behavior:'smooth'}); window.__center && window.__center(selNode); });
+  document.querySelectorAll('#lists [data-flow]').forEach(r => r.onclick = () => { flowSel = r.dataset.flow; codeRecs = false; selNode = null; listTab = 'files'; renderAll(); window.scrollTo({top:0, behavior:'smooth'}); });
 }
 function bindBar(){
   const pc = $('#peekcp'); if (pc) pc.onclick = e => { e.stopPropagation(); copyText(peekCopy); };
   const u = $('#unsel'); if (u) u.onclick = () => { selNode = null; renderAll(); };
   const cl = $('#clearlim'); if (cl) cl.onclick = () => { selLimit = null; renderAll(); };
   const d = $('#dismiss'); if (d) d.onclick = () => { changesOn = false; renderAll(); };
+  const fs = $('#flowsel'); if (fs) { fs.onchange = () => { flowSel = fs.value; selNode = null; codeRecs = false; renderAll(); }; fs.onmousedown = e => e.stopPropagation(); }
+  const cr = $('#coderecs'); if (cr) cr.onclick = () => { codeRecs = !codeRecs; selNode = null; codeView = 'new'; renderAll(); };
+  const cc = $('#codecp'); if (cc) cc.onclick = e => { e.stopPropagation(); copyText(peekCode, 'Código copiado.'); };
+  document.querySelectorAll('#map [data-cv]').forEach(b => b.onclick = e => { e.stopPropagation(); codeView = b.dataset.cv; renderMap(); });
+  document.querySelectorAll('#map [data-goto]').forEach(a => a.onclick = e => { e.stopPropagation(); const id = a.dataset.goto, isRec = !S.map.nodes.some(n => n.id === id); tab = isRec ? 'recs' : 'current'; selNode = id; history.replaceState(null, '', '#' + tab); renderAll(); window.__center && window.__center(id); });
   const a = $('#approve'); if (a) a.onclick = async () => { a.disabled = true; await post('/api/approve'); poll(); };
   const r = $('#reject'); if (r) r.onclick = async () => { const reason = prompt('Motivo da rejeição (opcional):') || ''; await post('/api/reject', {reason}); poll(); };
   bindLists();
@@ -834,7 +1059,7 @@ function setLive(on){ live = on; const l = $('#live'); l.classList.toggle('on', 
 function accept(next, first){
   const hadPending = !!(S && S.pending);
   S = next;
-  if (first) { changesOn = consumeChanges(); tab = S.pending ? 'update' : 'current'; const h = location.hash.slice(1); if (['update','current','recs'].includes(h)) tab = h; return; }
+  if (first) { changesOn = consumeChanges(); tab = S.pending ? 'update' : 'current'; const h = location.hash.slice(1); if (['update','current','recs','code'].includes(h)) tab = h; return; }
   if (!hadPending && S.pending) { tab = 'update'; selNode = null; listTab = 'update'; }
   if (hadPending && !S.pending) { tab = 'current'; selNode = null; changesOn = consumeChanges(); }
 }
@@ -847,7 +1072,7 @@ async function poll(){
   } catch(e) { setLive(false); }
 }
 (async function init(){
-  window.addEventListener('resize', () => { if (S) { delete views[tab]; renderMap(); } });
+  window.addEventListener('resize', () => { if (S) { Object.keys(views).forEach(k => delete views[k]); renderMap(); } });
   if (location.protocol.startsWith('http')) {
     try { const r = await fetch('/api/state', {cache:'no-store'}); if (r.ok) { lastRaw = await r.text(); accept(JSON.parse(lastRaw), true); setLive(true); renderAll(); setInterval(poll, 1500); return; } } catch(e){}
   }
