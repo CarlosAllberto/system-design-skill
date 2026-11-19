@@ -18,9 +18,13 @@ Comandos:
   set         muda o estado de um nó ou tarefa: waiting | in_progress | done | blocked
   finalize    aplica a atualização ao mapa atual e fecha a aba Atualização
   discard     descarta a atualização pendente
+  check       confere se o mapa está em dia com o código (linhas dos fluxos, CVEs, componentes fora do mapa);
+              --fix corrige as linhas dos passos que mudaram de lugar
+  version     mostra a versão do sd.py
 """
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -36,6 +40,7 @@ from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+VERSION = "1.1.0"
 HERE = Path(__file__).resolve().parent
 DIRNAME = ".system-design"
 STATES = ("waiting", "in_progress", "done", "blocked")
@@ -157,6 +162,7 @@ def paths(d):
         "ai": d / "AI-MAP.md",
         "html": d / "index.html",
         "hist": d / "history",
+        "skill": d / "skill.json",
     }
 
 
@@ -431,6 +437,7 @@ def build_ai_map(m, p=None, cves=None):
     a("- Depois da aprovação, rode `sd.py set <id> in_progress` ao começar cada parte e `sd.py set <id> done` ao terminar. Com tudo concluído, rode `sd.py finalize`.")
     a("- Mudança dentro de um único componente, sem alterar conexões nem limites, não precisa de proposta.")
     a("- Se a tarefa mexer em arquivos de um fluxo de código listado abaixo (nova rota, middleware, action, service ou mudança de ordem), atualize o fluxo em `flows` no map.json e rode `sd.py build` ao terminar.")
+    a("- Antes de tarefa de backend, rode `python3 .system-design/sd.py check` para ver se o mapa está em dia com o código. Depois de editar arquivos de um fluxo mapeado, rode `python3 .system-design/sd.py check --fix`.")
     a("")
     a(f"## Projeto: {pr.get('name', '')}")
     if pr.get("description"):
@@ -622,6 +629,15 @@ def lock_packages(root):
     return pkgs, files, warns
 
 
+def lock_hash(root, files):
+    """sha256 dos lockfiles lidos (nome + conteúdo, em ordem de nome)."""
+    h = hashlib.sha256()
+    for name in sorted(files):
+        h.update(name.encode())
+        h.update((root / name).read_bytes())
+    return h.hexdigest()
+
+
 def http_json(url, body=None):
     req = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None,
                                  headers={"Content-Type": "application/json", "User-Agent": "system-design-sd"})
@@ -687,7 +703,7 @@ def cmd_cves(a):
                 "url": f"https://osv.dev/vulnerability/{vid}",
             })
     vulns.sort(key=lambda x: (SEV_ORDER.get(x["severity"], 9), x["package"]))
-    save(P["cves"], {"scanned_at": now(), "files": files, "packages": len(keys), "warnings": warns, "vulns": vulns})
+    save(P["cves"], {"scanned_at": now(), "files": files, "lock_hash": lock_hash(d.parent, files), "packages": len(keys), "warnings": warns, "vulns": vulns})
     do_build(d, quiet=True)
     by = {}
     for v in vulns:
@@ -704,21 +720,28 @@ def find_viewer():
     die("viewer.html não encontrado")
 
 
-def read_snippet(root, rel, lines=None):
-    """Lê o trecho de código de um arquivo do projeto. Devolve (código, erro, linha inicial)."""
+def read_project_file(root, rel):
+    """Lê um arquivo do projeto com as regras de segurança (sem segredo, sem sair do projeto). Devolve (texto, erro)."""
     if not safe_rel(rel):
-        return "", "caminho não permitido", 1
+        return "", "caminho não permitido"
     path = (root / rel).resolve()
     try:
         path.relative_to(root.resolve())
     except ValueError:
-        return "", "fora do projeto", 1
+        return "", "fora do projeto"
     try:
         if path.stat().st_size > 2_000_000:
-            return "", "arquivo grande demais", 1
-        txt = path.read_text(encoding="utf-8", errors="replace")
+            return "", "arquivo grande demais"
+        return path.read_text(encoding="utf-8", errors="replace"), ""
     except OSError:
-        return "", "arquivo não encontrado", 1
+        return "", "arquivo não encontrado"
+
+
+def read_snippet(root, rel, lines=None):
+    """Lê o trecho de código de um arquivo do projeto. Devolve (código, erro, linha inicial)."""
+    txt, err = read_project_file(root, rel)
+    if err:
+        return "", err, 1
     all_lines = txt.splitlines()
     start, end = 1, len(all_lines)
     if lines:
@@ -752,20 +775,83 @@ def fill_code(flows, root):
     return out
 
 
+JS_IMPORT = re.compile(r"""(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)['"]([^'"\n]+)['"]""")
+PY_IMPORT = re.compile(r"(?m)^[ \t]*(?:from[ \t]+([A-Za-z_]\w*)[\w.]*[ \t]+import|import[ \t]+([A-Za-z_]\w*))")
+
+
+def file_imports(code, lang):
+    """Pacotes externos importados por um arquivo (nome do pacote, sem subcaminho). Relativos e aliases ficam de fora."""
+    if lang == "py":
+        return {a or b for a, b in PY_IMPORT.findall(code)}
+    out = set()
+    for spec in JS_IMPORT.findall(code):
+        if spec.startswith((".", "/", "~", "#", "@/", "node:")) or "${" in spec:
+            continue
+        parts = spec.split("/")
+        out.add("/".join(parts[:2]) if spec.startswith("@") else parts[0])
+    return out
+
+
+def npm_graph(root):
+    """Dependências de cada pacote npm, lidas do package-lock.json."""
+    # shortcut: junta pelo nome as cópias de versões diferentes e ignora pnpm/yarn/poetry; trocar por árvore por versão se der falso positivo
+    try:
+        data = json.loads((root / "package-lock.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    g = {}
+    for key, info in (data.get("packages") or {}).items():
+        if key and not info.get("link"):
+            name = info.get("name") or key.split("node_modules/")[-1]
+            g.setdefault(name, set()).update(info.get("dependencies") or {}, info.get("optionalDependencies") or {})
+    return g
+
+
+def fill_deps(flows, root, graph, tree):
+    """Grava em cada passo os pacotes que o arquivo importa (`deps`) e em `tree` as dependências indiretas de cada um."""
+    for f in flows:
+        for s in f["steps"]:
+            if not s.get("file"):
+                continue
+            code, err, _ = read_snippet(root, s["file"])
+            if err and not code:
+                continue
+            lang = s.get("lang") or Path(s["file"]).suffix.lstrip(".")
+            deps = file_imports(code, "py" if lang in ("py", "python") else "js")
+            if graph:
+                deps = {x for x in deps if x in graph}
+            s["deps"] = sorted(deps)
+            for x in deps:
+                if x in tree:
+                    continue
+                seen, todo = set(), list(graph.get(x, ()))
+                while todo:
+                    y = todo.pop()
+                    if y not in seen and y != x:
+                        seen.add(y)
+                        todo.extend(graph.get(y, ()))
+                tree[x] = sorted(seen)
+
+
 def get_state(d, live=False):
     P = paths(d)
     m = read_map(d)
-    m["flows"] = fill_code(m["flows"], d.parent)
+    root, tree = d.parent, {}
+    graph = npm_graph(root)
+    m["flows"] = fill_code(m["flows"], root)
+    fill_deps(m["flows"], root, graph, tree)
     p = load(P["pending"])
     if p:
         for k in ("add_flows", "change_flows"):
             if p.get(k):
-                p[k] = fill_code(p[k], d.parent)
+                p[k] = fill_code(p[k], root)
+                fill_deps(p[k], root, graph, tree)
     return {
         "map": m,
         "pending": p,
         "changes": load(P["changes"]),
         "cves": load(P["cves"]),
+        "dep_tree": tree,
         "live": live,
     }
 
@@ -822,10 +908,18 @@ def cmd_init(a):
     d = base_dir(create=True)
     d.mkdir(parents=True, exist_ok=True)
     (d / "history").mkdir(exist_ok=True)
+    P = paths(d)
     if HERE != d:
+        had = (d / "sd.py").exists()
+        try:
+            old_ver = json.loads(P["skill"].read_text(encoding="utf-8")).get("version")
+        except (OSError, ValueError, AttributeError):
+            old_ver = None
         shutil.copy2(__file__, d / "sd.py")
         shutil.copy2(find_viewer(), d / "viewer.html")
-    P = paths(d)
+        save(P["skill"], {"version": VERSION, "source": str(Path(__file__).resolve())})
+        if had and old_ver != VERSION:
+            print(f"ok: sd.py e viewer.html atualizados para a versão {VERSION}")
     if not P["map"].exists():
         save(P["map"], norm_map({"project": {"name": d.parent.name, "description": "", "hosting": {}}}))
     root = d.parent
@@ -860,7 +954,14 @@ def cmd_validate(a):
 
 
 def cmd_build(a):
-    do_build(base_dir())
+    d = base_dir()
+    do_build(d)
+    warn = skill_update_warning(d)
+    if warn:
+        print(warn)
+    n = len(check_flows(load(paths(d)["map"]), d.parent))
+    if n:
+        print(f"aviso: {n} passo(s) de fluxo com linhas desatualizadas; rode python3 .system-design/sd.py check --fix")
 
 
 def make_items(m, p):
@@ -1082,6 +1183,175 @@ def cmd_discard(a):
     print("ok: atualização descartada")
 
 
+# ---------------------------------------------------------------- check (mapa x código)
+
+def version_tuple(v):
+    return tuple(int(x) for x in re.findall(r"\d+", v))
+
+
+def skill_update_warning(d):
+    """Aviso quando a skill instalada é mais nova que o sd.py deste projeto. Sem skill.json ou fonte legível, nada."""
+    try:
+        src = json.loads(paths(d)["skill"].read_text(encoding="utf-8"))["source"]
+        new = re.search(r'(?m)^VERSION\s*=\s*"([^"]+)"', Path(src).read_text(encoding="utf-8")).group(1)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return ""
+    if version_tuple(new) > version_tuple(VERSION):
+        return f"aviso: a skill instalada está na versão {new} e este projeto usa a {VERSION}. Atualize com: python3 {src} init"
+    return ""
+
+
+def def_line(all_lines, name, near):
+    """Linha (1-based) onde `name` é definido; sem definição, onde aparece como palavra. A mais perto de `near`."""
+    n = re.escape(name)
+    word = re.compile(rf"(?<![\w$]){n}(?![\w$])")
+    defn = re.compile(rf"\b(?:function\*?|def|class|const|let|var|async)\s+{n}(?![\w$])"
+                      rf"|^\s*(?:(?:export|public|private|protected|static|async|get|set)\s+)*{n}\s*[(:=]")
+    for rx in (defn, word):
+        hits = [i for i, l in enumerate(all_lines, 1) if rx.search(l)]
+        if hits:
+            return min(hits, key=lambda i: abs(i - near))
+    return None
+
+
+def check_flows(m, root):
+    """Passos de fluxo (map.json) cujo arquivo ou linhas não batem com o código.
+    Devolve [(texto, passo, linhas novas)]; linhas novas é None quando não dá para corrigir sozinho."""
+    out = []
+    for f in (m or {}).get("flows", []):
+        for s in f.get("steps", []):
+            if not s.get("file"):
+                continue
+            tag = f"fluxo {f.get('id', '')}, passo {s.get('id', '')}: {s['file']}"
+            txt, err = read_project_file(root, s["file"])
+            if err:
+                out.append((f"{tag}: arquivo não encontrado", s, None))
+                continue
+            lines = str(s.get("lines") or "")
+            if not LINES_RE.match(lines):
+                continue
+            all_lines = txt.splitlines()
+            a_, _, b_ = lines.partition("-")
+            start, end = int(a_), int(b_ or a_)
+            sym = s.get("symbol")
+            if sym:
+                name = re.split(r"[.:#]", str(sym).replace("()", ""))[-1].strip()
+                word = re.compile(rf"(?<![\w$]){re.escape(name)}(?![\w$])")
+                if name and not any(word.search(l) for l in all_lines[start - 1:end]):
+                    i = def_line(all_lines, name, start)
+                    if i is None:
+                        out.append((f"{tag}: símbolo {sym} não encontrado em {s['file']}", s, None))
+                    else:
+                        new = f"{i}-{min(len(all_lines), i + end - start)}" if b_ else str(i)
+                        out.append((f"{tag} linhas {lines} → {new}", s, new))
+                    continue
+            if end > len(all_lines):
+                new = f"{start}-{len(all_lines)}" if start < len(all_lines) else None
+                out.append((f"{tag}: linhas {lines} passam do fim do arquivo ({len(all_lines)} linhas)"
+                            + (f" → {new}" if new else ""), s, new))
+    return out
+
+
+# dependência conhecida -> outros nomes que contam como "já está no mapa"
+INFRA_DEPS = {
+    "pg": ("postgres",), "mysql2": ("mysql",), "mongoose": ("mongo",), "mongodb": ("mongo",),
+    "prisma": (), "@prisma/client": ("prisma",), "redis": (), "ioredis": ("redis",), "bullmq": ("redis",),
+    "amqplib": ("rabbitmq",), "kafkajs": ("kafka",), "stripe": (), "@supabase/supabase-js": ("supabase",),
+    "firebase": (), "firebase-admin": ("firebase",), "resend": (), "nodemailer": ("smtp",),
+    "@sendgrid/mail": ("sendgrid",), "openai": (), "@anthropic-ai/sdk": ("anthropic", "claude"),
+    "@sentry/node": ("sentry",), "twilio": (),
+    "psycopg2": ("postgres",), "psycopg": ("postgres",), "sqlalchemy": ("postgres", "mysql", "sqlite"),
+    "celery": (), "boto3": ("s3", "aws"), "anthropic": ("claude",), "sentry-sdk": ("sentry",), "pymongo": ("mongo",),
+}
+PY_INFRA = ("psycopg2", "psycopg", "sqlalchemy", "redis", "celery", "stripe", "boto3", "openai", "anthropic", "sentry-sdk", "pymongo")
+
+
+def infra_candidates(root):
+    """Componentes de infraestrutura que aparecem no projeto: [(nome, onde, aliases)]."""
+    # shortcut: lê só a raiz do projeto e casa nomes por regex; trocar por parser de verdade se der falso positivo
+    found = {}
+    for name in ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"):
+        try:
+            txt = (root / name).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        sec = re.search(r"(?ms)^services:[ \t]*\n(.*?)(?=^\S|\Z)", txt)
+        ind = sec and re.search(r"(?m)^([ \t]+)[^\s#]", sec.group(1))
+        if ind:
+            for svc in re.findall(r"(?m)^" + re.escape(ind.group(1)) + r"[\"']?([\w.-]+)[\"']?\s*:", sec.group(1)):
+                found.setdefault(svc, (name, ()))
+    try:
+        pj = json.loads((root / "package.json").read_text(encoding="utf-8"))
+        deps = pj.get("dependencies") or {}
+    except (OSError, ValueError, AttributeError):
+        deps = {}
+    for dep in deps:
+        if dep in INFRA_DEPS:
+            found.setdefault(dep, ("package.json", INFRA_DEPS[dep]))
+        elif dep.startswith("@aws-sdk/"):
+            found.setdefault(dep, ("package.json", ("s3", "aws")))
+    for path in [*sorted(root.glob("requirements*.txt")), root / "pyproject.toml"]:
+        try:
+            txt = path.read_text(encoding="utf-8").lower().replace("_", "-")
+        except OSError:
+            continue
+        for dep in PY_INFRA:
+            if re.search(rf"(?<![\w-]){re.escape(dep)}(?![\w-])", txt):
+                found.setdefault(dep, (path.name, INFRA_DEPS.get(dep, ())))
+    return [(k, w, al) for k, (w, al) in found.items()]
+
+
+def unmapped_infra(m, root):
+    hay = " ".join(str(n.get(k, "")) for n in m.get("nodes", []) + (m.get("recommendations") or {}).get("nodes", [])
+                   for k in ("id", "label", "tech", "description")).lower()
+    out = []
+    for name, where, aliases in infra_candidates(root):
+        if not any(re.search(rf"(?<![a-z0-9]){re.escape(t.lower())}(?![a-z0-9])", hay) for t in (name, *aliases)):
+            out.append(f"possível componente fora do mapa: {name} ({where})")
+    return out
+
+
+def cmd_check(a):
+    d = base_dir()
+    P = paths(d)
+    root = d.parent
+    m = load(P["map"])
+    if m is None:
+        die("map.json não existe. Rode init e escreva o mapa.")
+    issues, fixed = [], 0
+    for text, step, new in check_flows(m, root):
+        if a.fix and new:
+            step["lines"] = new
+            fixed += 1
+            print(f"corrigido: {text}")
+        else:
+            issues.append(text)
+    if fixed:
+        save(P["map"], m)
+        do_build(d, quiet=True)
+    _, files, _ = lock_packages(root)
+    if files:  # sem lockfile não há o que varrer
+        cves = load(P["cves"])
+        if cves is None:
+            issues.append("sem varredura de CVEs; rode sd.py cves")
+        elif cves.get("lock_hash") != lock_hash(root, files):
+            issues.append("as dependências mudaram desde a última varredura; rode sd.py cves")
+    issues += unmapped_infra(m, root)
+    warn = skill_update_warning(d)
+    if warn:
+        issues.append(warn)
+    for i in issues:
+        print(i)
+    if issues:
+        print(f"{len(issues)} problema(s) encontrado(s)" + (f", {fixed} corrigido(s)" if fixed else ""))
+        sys.exit(1)
+    print("ok: mapa em dia com o código")
+
+
+def cmd_version(a):
+    print(f"system-design {VERSION}")
+
+
 # ---------------------------------------------------------------- servidor
 
 def make_handler(d, port):
@@ -1200,6 +1470,10 @@ def main():
     s.add_argument("--force", action="store_true")
     s.set_defaults(fn=cmd_finalize)
     sub.add_parser("discard").set_defaults(fn=cmd_discard)
+    s = sub.add_parser("check")
+    s.add_argument("--fix", action="store_true", help="corrige as linhas dos passos que mudaram de lugar")
+    s.set_defaults(fn=cmd_check)
+    sub.add_parser("version").set_defaults(fn=cmd_version)
     a = ap.parse_args()
     a.fn(a)
 

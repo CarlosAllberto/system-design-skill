@@ -10,7 +10,7 @@
 ![Sem dependências](https://img.shields.io/badge/depend%C3%AAncias-nenhuma-lightgrey)
 [![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)](LICENSE)
 
-[Capturas](#capturas) • [Instalação](#instalação) • [Uso](#uso) • [O que o init altera](#o-que-o-init-altera-no-projeto) • [Confidencialidade](#confidencialidade) • [O que sai da sua máquina](#o-que-sai-da-sua-máquina)
+[Capturas](#capturas) • [Instalação](#instalação) • [Atualização](#atualização) • [Uso](#uso) • [O que o init altera](#o-que-o-init-altera-no-projeto) • [Confidencialidade](#confidencialidade) • [O que sai da sua máquina](#o-que-sai-da-sua-máquina)
 
 <a href="README.md">English</a> • Português
 
@@ -31,7 +31,7 @@ O mapa mostra os componentes e as conexões. O botão do canto inferior alterna 
   <img src="docs/screenshots/mapa-claro.png" alt="Mapa no tema claro" width="49%">
 </p>
 
-A aba **Com recomendações** desenha a arquitetura sugerida sobre a atual: o que entra fica tracejado em roxo e o que sai, em vermelho.
+O botão **Com recomendações**, no canto inferior direito da aba **Infraestrutura**, desenha a arquitetura sugerida sobre a atual: o que entra fica tracejado em roxo e o que sai, em vermelho.
 
 <p align="center">
   <img src="docs/screenshots/recomendacoes-mapa.png" alt="Mapa com recomendações, modo detalhado" width="100%">
@@ -62,6 +62,8 @@ A aba **Fluxo de código** desenha uma rota por vez. Escolha a rota no topo; cad
   <img src="docs/screenshots/fluxo-codigo-arquivo.png" alt="Painel do passo com resumo, arquivo, componente ligado e código" width="100%">
 </p>
 
+A lista **CVEs** do fluxo mostra só as vulnerabilidades dos pacotes que os arquivos dele importam, direto ou pelas dependências deles, e marca no mapa o passo afetado.
+
 O botão **Com recomendações** acrescenta os passos sugeridos (tracejado roxo, como um middleware de idempotência), marca os passos cujo código deve mudar (azul, com as visões *Atual* e *Sugerido*) e as conexões que saem (tracejado vermelho). Cada recomendação tem um botão que copia um pedido pronto, com o código sugerido, para colar no agente.
 
 <p align="center">
@@ -83,9 +85,24 @@ npx skills add CarlosAllberto/system-design-skill
 
 O comando instala a skill nos agentes compatíveis que você usa. O repositório se chama `system-design-skill`, mas a skill instalada se chama `system-design`, nome definido no `SKILL.md`. Requisito: Python 3 (no Windows o comando pode ser `python`).
 
+## Atualização
+
+**Atualizar a skill.** Rode `npx skills add CarlosAllberto/system-design-skill` de novo. Ele baixa a versão mais recente do GitHub.
+
+**Levar a versão nova para um projeto já mapeado.** Peça ao agente "atualize o system design deste projeto", ou rode:
+
+```bash
+python3 <caminho da skill>/scripts/sd.py init
+python3 .system-design/sd.py build
+```
+
+O `init` só recopia o `sd.py` e a página. O mapa, os fluxos, o histórico e as CVEs são mantidos. O `build` avisa quando a cópia do projeto é mais antiga que a skill instalada, e `python3 .system-design/sd.py version` mostra a versão.
+
+**Reler o projeto depois que o código mudou fora do agente.** Peça ao agente para ressincronizar o mapa (Modo 5). Para fazer à mão, `python3 .system-design/sd.py check` lista o que divergiu do código e `check --fix` corrige as faixas de linhas dos passos dos fluxos. Mudança de infraestrutura continua passando pela proposta com aprovação. Depois de mudar dependências, rode `sd.py cves` de novo.
+
 ## Uso
 
-Peça ao agente algo como "mapeie o system design deste projeto". A skill tem 4 modos:
+Peça ao agente algo como "mapeie o system design deste projeto". A skill tem 5 modos:
 
 | Modo | Quando | O que acontece |
 | --- | --- | --- |
@@ -93,6 +110,7 @@ Peça ao agente algo como "mapeie o system design deste projeto". A skill tem 4 
 | 2. Desenhar um backend novo | App novo, sem backend | A arquitetura alvo e os fluxos de código planejados (com código inicial) viram uma proposta com tarefas de implementação |
 | 3. Propor antes de mudar o fluxo | Novo componente, banco, fila, cache, API externa, autenticação ou deploy | A IA registra a proposta e espera você aprovar na aba Atualização |
 | 4. Executar a atualização aprovada | Depois da aprovação | Cada item passa por `waiting`, `in_progress` e `done`; no fim o `finalize` atualiza o mapa |
+| 5. Ressincronizar com o código | O código mudou fora do agente, ou depois de atualizar a skill | A IA parte do mapa atual, roda o `check`, corrige as linhas dos fluxos, propõe as mudanças de infraestrutura para aprovação e refaz as CVEs se as dependências mudaram |
 
 Para mapear só o código de uma rota, peça algo como "mapeie o fluxo de código de api/users" ou "mostre o fluxo de código do POST /api/orders com recomendações".
 
@@ -102,6 +120,8 @@ Comandos úteis, a partir da raiz do projeto:
 python3 .system-design/sd.py serve --open
 python3 .system-design/sd.py cves
 python3 .system-design/sd.py build
+python3 .system-design/sd.py check
+python3 .system-design/sd.py version
 ```
 
 Um exemplo para testar fica em [`examples/map.example.json`](examples/map.example.json). Para ver a aba de vulnerabilidades, copie também [`examples/cves.example.json`](examples/cves.example.json) para `.system-design/cves.json` (os dados são fictícios) e rode `build`.
@@ -137,7 +157,7 @@ Nenhum conteúdo do `map.json` (nomes de projeto, limites, descrições) é envi
 ```
 system-design-skill/
 ├── SKILL.md          Instruções para o agente
-├── scripts/sd.py     CLI do ciclo de vida (propose, approve, set, finalize, cves, serve)
+├── scripts/sd.py     CLI do ciclo de vida (propose, approve, set, finalize, cves, check, serve)
 ├── assets/viewer.html Página do mapa
 ├── docs/screenshots/ Capturas do README
 ├── references/       Esquema do map.json, fluxos de código, limites, recomendações, app novo

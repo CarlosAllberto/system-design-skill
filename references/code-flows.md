@@ -56,6 +56,10 @@ Uma ou duas frases dizendo o que o passo faz e o que acontece quando falha. Exem
 | `response` | O que volta para o cliente |
 | `util`, `config`, `test` | Utilitário, configuração ou teste relevante ao fluxo |
 
+## CVEs do fluxo
+
+O `sd.py build` lê os `import`, `require` (JS/TS) e `import`/`from` (Python) do arquivo de cada passo e cruza com o `cves.json`. Num projeto npm, as dependências indiretas vêm do `package-lock.json`, então uma CVE do `qs` aparece no passo que importa o `express`. Não precisa preencher nada no `map.json`: basta o passo ter `file`. Imports de arquivos do próprio projeto não são seguidos, então o passo que usa um pacote através de um arquivo local (ex.: `lib/db.js` com o `pg`) só mostra a CVE se esse arquivo também for um passo.
+
 ## Recomendações de código
 
 Pense como o time de plataforma de um banco revisando a rota. Avalie cada item abaixo e recomende só o que resolve um risco real deste fluxo:

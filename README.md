@@ -10,7 +10,7 @@
 ![No dependencies](https://img.shields.io/badge/dependencies-none-lightgrey)
 [![License MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-[Screenshots](#screenshots) • [Install](#install) • [Usage](#usage) • [What init changes](#what-init-changes-in-your-project) • [Confidentiality](#confidentiality) • [What leaves your machine](#what-leaves-your-machine)
+[Screenshots](#screenshots) • [Install](#install) • [Updating](#updating) • [Usage](#usage) • [What init changes](#what-init-changes-in-your-project) • [Confidentiality](#confidentiality) • [What leaves your machine](#what-leaves-your-machine)
 
 English • <a href="README.pt-BR.md">Português</a>
 
@@ -31,7 +31,7 @@ The map shows components and connections. The button in the bottom-left corner s
   <img src="docs/screenshots/mapa-claro.png" alt="Map in the light theme" width="49%">
 </p>
 
-The **Com recomendações** (With recommendations) tab draws the suggested architecture over the current one: what comes in is dashed purple and what goes out is dashed red.
+The **Com recomendações** (With recommendations) button, at the bottom right of the **Infraestrutura** tab, draws the suggested architecture over the current one: what comes in is dashed purple and what goes out is dashed red.
 
 <p align="center">
   <img src="docs/screenshots/recomendacoes-mapa.png" alt="Map with recommendations, detailed mode" width="100%">
@@ -62,6 +62,8 @@ The **Fluxo de código** (Code flow) tab draws one route at a time. Pick the rou
   <img src="docs/screenshots/fluxo-codigo-arquivo.png" alt="Step panel with summary, file, linked component and code" width="100%">
 </p>
 
+The flow's **CVEs** list shows only the vulnerabilities of the packages its files import, directly or through their dependencies, and flags the affected step on the map.
+
 The **Com recomendações** (With recommendations) toggle adds suggested steps (dashed purple, such as an idempotency middleware), marks steps whose code should change (blue, with *Atual* and *Sugerido* views) and the connections that go away (dashed red). Each recommendation has a button that copies a ready request, with the suggested code, to paste into the agent.
 
 <p align="center">
@@ -83,9 +85,24 @@ npx skills add CarlosAllberto/system-design-skill
 
 The command installs the skill in the compatible agents you use. The repository is called `system-design-skill`, but the installed skill is called `system-design`, the name set in `SKILL.md`. Requirement: Python 3 (on Windows the command may be `python`).
 
+## Updating
+
+**Update the skill.** Run `npx skills add CarlosAllberto/system-design-skill` again. It fetches the latest version from GitHub.
+
+**Bring the new version into a project you already mapped.** Ask the agent "update the system design of this project", or run:
+
+```bash
+python3 <skill path>/scripts/sd.py init
+python3 .system-design/sd.py build
+```
+
+`init` only re-copies `sd.py` and the page. The map, flows, history and CVEs are kept. `build` warns when the project copy is older than the installed skill, and `python3 .system-design/sd.py version` shows the version.
+
+**Re-read the project after the code changed outside the agent.** Ask the agent to resync the map (mode 5). To do it by hand, `python3 .system-design/sd.py check` lists what drifted from the code and `check --fix` fixes the line ranges of the flow steps. Infrastructure changes still go through the approval proposal. After dependency changes, run `sd.py cves` again.
+
 ## Usage
 
-Ask the agent something like "map the system design of this project". The skill has 4 modes:
+Ask the agent something like "map the system design of this project". The skill has 5 modes:
 
 | Mode | When | What happens |
 | --- | --- | --- |
@@ -93,6 +110,7 @@ Ask the agent something like "map the system design of this project". The skill 
 | 2. Design a new backend | New app, no backend yet | The target architecture and the planned code flows (with starter code) become a proposal with implementation tasks |
 | 3. Propose before changing the flow | New component, database, queue, cache, external API, authentication or deploy | The AI registers the proposal and waits for you to approve it in the update tab |
 | 4. Run the approved update | After approval | Each item goes through `waiting`, `in_progress` and `done`; at the end `finalize` updates the map |
+| 5. Resync with the code | The code changed outside the agent, or after a skill update | The AI starts from the current map, runs `check`, fixes flow line ranges, proposes infrastructure changes for approval and refreshes the CVEs if dependencies changed |
 
 To map only the code of one route, ask something like "map the code flow of api/users" or "show the code flow of POST /api/orders with recommendations".
 
@@ -102,6 +120,8 @@ Useful commands, from the project root:
 python3 .system-design/sd.py serve --open
 python3 .system-design/sd.py cves
 python3 .system-design/sd.py build
+python3 .system-design/sd.py check
+python3 .system-design/sd.py version
 ```
 
 An example to try is in [`examples/map.example.json`](examples/map.example.json). To see the vulnerabilities tab, also copy [`examples/cves.example.json`](examples/cves.example.json) to `.system-design/cves.json` (the data is fictional) and run `build`.
@@ -137,7 +157,7 @@ No content from `map.json` (project names, limits, descriptions) is sent to thir
 ```
 system-design-skill/
 ├── SKILL.md          Instructions for the agent
-├── scripts/sd.py     Lifecycle CLI (propose, approve, set, finalize, cves, serve)
+├── scripts/sd.py     Lifecycle CLI (propose, approve, set, finalize, cves, check, serve)
 ├── assets/viewer.html Map page
 ├── docs/screenshots/ README screenshots
 ├── references/       map.json schema, code flows, limits, recommendations, new app
