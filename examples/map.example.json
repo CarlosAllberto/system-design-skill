@@ -547,5 +547,265 @@
         "to": "api"
       }
     ]
-  }
+  },
+  "flows": [
+    {
+      "id": "post-orders",
+      "label": "Criar pedido",
+      "method": "POST",
+      "route": "/api/orders",
+      "node": "api",
+      "description": "Recebe o carrinho do frontend, cria o pedido, abre a cobrança no Stripe e avisa o worker.",
+      "steps": [
+        {
+          "id": "router",
+          "label": "Rota POST /api/orders",
+          "type": "route",
+          "file": "src/routes/orders.ts",
+          "lines": "1-15",
+          "lang": "ts",
+          "symbol": "ordersRouter.post",
+          "summary": "Registra a rota e encadeia os middlewares de autenticação e validação antes do controller.",
+          "code": "import { Router } from 'express';\nimport { requireAuth } from '../middlewares/auth';\nimport { validate } from '../middlewares/validate';\nimport { createOrderSchema } from '../schemas/order';\nimport { createOrderController } from '../controllers/orders';\n\nexport const ordersRouter = Router();\n\n// POST /api/orders: autentica, valida o corpo e cria o pedido\nordersRouter.post(\n  '/',\n  requireAuth,\n  validate(createOrderSchema),\n  createOrderController,\n);"
+        },
+        {
+          "id": "auth-mw",
+          "label": "requireAuth",
+          "type": "middleware",
+          "file": "src/middlewares/auth.ts",
+          "lines": "1-17",
+          "lang": "ts",
+          "symbol": "requireAuth",
+          "node": "auth",
+          "summary": "Lê o Bearer token, valida no Auth0 (JWKS) e coloca o usuário em req.user. Sem token válido, responde 401.",
+          "code": "import type { Request, Response, NextFunction } from 'express';\nimport { verifyAccessToken } from '../lib/auth0';\n\nexport async function requireAuth(req: Request, res: Response, next: NextFunction) {\n  const header = req.headers.authorization ?? '';\n  const token = header.startsWith('Bearer ') ? header.slice(7) : null;\n  if (!token) return res.status(401).json({ error: 'unauthorized' });\n\n  try {\n    const claims = await verifyAccessToken(token); // JWKS do Auth0, com cache\n    req.user = { id: claims.sub, email: claims.email };\n    return next();\n  } catch {\n    return res.status(401).json({ error: 'invalid_token' });\n  }\n}"
+        },
+        {
+          "id": "validate-mw",
+          "label": "validate(createOrderSchema)",
+          "type": "validator",
+          "file": "src/middlewares/validate.ts",
+          "lines": "1-13",
+          "lang": "ts",
+          "symbol": "validate",
+          "summary": "Valida o corpo com Zod. Corpo inválido volta 422 com a lista de erros; corpo válido segue já tipado.",
+          "code": "import type { Request, Response, NextFunction } from 'express';\nimport type { ZodSchema } from 'zod';\n\nexport const validate = (schema: ZodSchema) =>\n  (req: Request, res: Response, next: NextFunction) => {\n    const parsed = schema.safeParse(req.body);\n    if (!parsed.success) {\n      return res.status(422).json({ error: 'invalid_body', issues: parsed.error.issues });\n    }\n    req.body = parsed.data;\n    return next();\n  };"
+        },
+        {
+          "id": "controller",
+          "label": "createOrderController",
+          "type": "controller",
+          "file": "src/controllers/orders.ts",
+          "lines": "1-11",
+          "lang": "ts",
+          "symbol": "createOrderController",
+          "summary": "Traduz HTTP para a action: passa o usuário e os itens, devolve 201 com o pedido e repassa erros ao error handler.",
+          "code": "import type { Request, Response, NextFunction } from 'express';\nimport { createOrder } from '../actions/create-order';\n\nexport async function createOrderController(req: Request, res: Response, next: NextFunction) {\n  try {\n    const order = await createOrder({ userId: req.user.id, items: req.body.items });\n    return res.status(201).json(order);\n  } catch (err) {\n    return next(err); // vai para o error handler e para o Sentry\n  }\n}"
+        },
+        {
+          "id": "action",
+          "label": "createOrder",
+          "type": "action",
+          "file": "src/actions/create-order.ts",
+          "lines": "1-20",
+          "lang": "ts",
+          "symbol": "createOrder",
+          "node": "payments",
+          "summary": "Regra de negócio: calcula o total, grava o pedido, cria o PaymentIntent no Stripe e publica order.created na fila.",
+          "code": "import { db } from '../db';\nimport { ordersRepo } from '../repositories/orders';\nimport { stripe } from '../lib/stripe';\nimport { publish } from '../lib/queue';\n\nexport async function createOrder({ userId, items }: CreateOrderInput) {\n  const products = await ordersRepo.findProducts(items.map(i => i.productId));\n  const total = items.reduce((sum, i) => sum + products[i.productId].price * i.qty, 0);\n\n  const order = await ordersRepo.insert({ userId, items, total, status: 'pending' });\n\n  const payment = await stripe.paymentIntents.create({\n    amount: total,\n    currency: 'brl',\n    metadata: { orderId: order.id },\n  });\n\n  await publish('order.created', { orderId: order.id });\n  return { ...order, clientSecret: payment.client_secret };\n}"
+        },
+        {
+          "id": "repo",
+          "label": "ordersRepo",
+          "type": "repository",
+          "file": "src/repositories/orders.ts",
+          "lines": "1-21",
+          "lang": "ts",
+          "symbol": "ordersRepo",
+          "node": "db",
+          "summary": "SQL de pedidos e produtos: busca preços e estoque e insere o pedido em orders.",
+          "code": "import { db } from '../db';\n\nexport const ordersRepo = {\n  async findProducts(ids: string[]) {\n    const rows = await db.query(\n      'SELECT id, price, stock FROM products WHERE id = ANY($1)',\n      [ids],\n    );\n    return Object.fromEntries(rows.map(r => [r.id, r]));\n  },\n\n  async insert(order: NewOrder) {\n    const [row] = await db.query(\n      `INSERT INTO orders (user_id, items, total, status)\n       VALUES ($1, $2, $3, $4) RETURNING *`,\n      [order.userId, JSON.stringify(order.items), order.total, order.status],\n    );\n    return row;\n  },\n};"
+        },
+        {
+          "id": "publish",
+          "label": "publish('order.created')",
+          "type": "queue",
+          "file": "src/lib/queue.ts",
+          "lang": "ts",
+          "symbol": "publish",
+          "node": "queue",
+          "summary": "Envia o evento ao RabbitMQ para o worker baixar o estoque e mandar o e-mail.",
+          "code": "export async function publish(topic: string, payload: unknown) {\n  const ch = await channel();\n  ch.publish('orders', topic, Buffer.from(JSON.stringify(payload)), { persistent: true });\n}"
+        },
+        {
+          "id": "response",
+          "label": "201 Created",
+          "type": "response",
+          "summary": "Devolve o pedido e o clientSecret para o frontend concluir o pagamento.",
+          "lang": "json",
+          "code": "{\n  \"id\": \"ord_123\",\n  \"status\": \"pending\",\n  \"total\": 15990,\n  \"clientSecret\": \"pi_..._secret_...\"\n}"
+        }
+      ],
+      "edges": [
+        {
+          "from": "router",
+          "to": "auth-mw",
+          "label": "next()"
+        },
+        {
+          "from": "auth-mw",
+          "to": "validate-mw",
+          "label": "next()"
+        },
+        {
+          "from": "validate-mw",
+          "to": "controller",
+          "label": "req.body tipado"
+        },
+        {
+          "from": "controller",
+          "to": "action",
+          "label": "userId, items"
+        },
+        {
+          "from": "action",
+          "to": "repo",
+          "label": "SQL"
+        },
+        {
+          "from": "action",
+          "to": "publish",
+          "label": "order.created"
+        },
+        {
+          "from": "controller",
+          "to": "response",
+          "label": "res.json"
+        }
+      ],
+      "recommendations": {
+        "steps": [
+          {
+            "id": "idem-mw",
+            "label": "idempotency",
+            "type": "middleware",
+            "file": "src/middlewares/idempotency.ts",
+            "lang": "ts",
+            "symbol": "idempotency",
+            "node": "cache",
+            "summary": "Guarda a resposta por Idempotency-Key no Redis e devolve a mesma resposta quando o cliente repete o pedido.",
+            "why": "Um duplo clique ou um retry do frontend hoje cria dois pedidos e duas cobranças.",
+            "priority": "alta",
+            "effort": "baixo",
+            "code": "import type { Request, Response, NextFunction } from 'express';\nimport { redis } from '../lib/redis';\n\n// Reaproveita a resposta quando o cliente repete a mesma Idempotency-Key.\nexport async function idempotency(req: Request, res: Response, next: NextFunction) {\n  const key = req.header('Idempotency-Key');\n  if (!key) return res.status(400).json({ error: 'missing_idempotency_key' });\n\n  const cacheKey = `idem:${req.user.id}:${key}`;\n  const saved = await redis.get(cacheKey);\n  if (saved) return res.status(200).json(JSON.parse(saved));\n\n  const json = res.json.bind(res);\n  res.json = body => {\n    if (res.statusCode < 300) redis.set(cacheKey, JSON.stringify(body), 'EX', 86400);\n    return json(body);\n  };\n  return next();\n}"
+          },
+          {
+            "id": "outbox-relay",
+            "label": "relayOutbox",
+            "type": "job",
+            "file": "src/jobs/relay-outbox.ts",
+            "lang": "ts",
+            "symbol": "relayOutbox",
+            "node": "worker",
+            "summary": "Publica na fila os eventos gravados no outbox e marca cada um como enviado.",
+            "why": "Se o RabbitMQ cair entre o INSERT e o publish, o pedido fica sem baixa de estoque e sem e-mail.",
+            "priority": "media",
+            "effort": "médio",
+            "code": "import { db } from '../db';\nimport { publish } from '../lib/queue';\n\n// Roda a cada segundo no worker: publica o que está no outbox e marca como enviado.\nexport async function relayOutbox() {\n  const rows = await db.query(\n    `SELECT id, topic, payload FROM outbox\n     WHERE sent_at IS NULL ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED`,\n  );\n  for (const r of rows) {\n    await publish(r.topic, r.payload);\n    await db.query('UPDATE outbox SET sent_at = now() WHERE id = $1', [r.id]);\n  }\n}"
+          }
+        ],
+        "edges": [
+          {
+            "from": "auth-mw",
+            "to": "idem-mw",
+            "label": "next()"
+          },
+          {
+            "from": "idem-mw",
+            "to": "validate-mw",
+            "label": "next()"
+          },
+          {
+            "from": "repo",
+            "to": "outbox-relay",
+            "label": "outbox"
+          }
+        ],
+        "remove_edges": [
+          {
+            "from": "auth-mw",
+            "to": "validate-mw"
+          },
+          {
+            "from": "action",
+            "to": "publish"
+          }
+        ],
+        "changes": [
+          {
+            "step": "action",
+            "label": "Transação com outbox e chave de idempotência no Stripe",
+            "why": "Grava pedido e evento juntos, repassa a Idempotency-Key ao Stripe e põe timeout de 8 s na chamada externa.",
+            "priority": "alta",
+            "effort": "médio",
+            "code": "import { db } from '../db';\nimport { ordersRepo } from '../repositories/orders';\nimport { stripe } from '../lib/stripe';\n\nexport async function createOrder({ userId, items, idempotencyKey }: CreateOrderInput) {\n  // Pedido e evento na mesma transação (outbox): nenhum evento se perde.\n  const order = await db.transaction(async tx => {\n    const products = await ordersRepo.findProducts(items.map(i => i.productId), tx);\n    const total = items.reduce((sum, i) => sum + products[i.productId].price * i.qty, 0);\n    const row = await ordersRepo.insert({ userId, items, total, status: 'pending' }, tx);\n    await tx.query('INSERT INTO outbox (topic, payload) VALUES ($1, $2)',\n      ['order.created', { orderId: row.id }]);\n    return row;\n  });\n\n  const payment = await stripe.paymentIntents.create(\n    { amount: order.total, currency: 'brl', metadata: { orderId: order.id } },\n    { idempotencyKey, timeout: 8000 },\n  );\n  return { ...order, clientSecret: payment.client_secret };\n}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "stripe-webhook",
+      "label": "Webhook do Stripe",
+      "method": "POST",
+      "route": "/api/webhooks/stripe",
+      "node": "api",
+      "description": "Confirma o pagamento quando o Stripe avisa que a cobrança foi paga.",
+      "steps": [
+        {
+          "id": "router",
+          "label": "Rota POST /api/webhooks/stripe",
+          "type": "route",
+          "file": "src/routes/webhooks.ts",
+          "lang": "ts",
+          "summary": "Usa express.raw para manter o corpo original, que a assinatura precisa.",
+          "code": "webhooksRouter.post(\n  '/stripe',\n  express.raw({ type: 'application/json' }),\n  stripeWebhookController,\n);"
+        },
+        {
+          "id": "controller",
+          "label": "stripeWebhookController",
+          "type": "controller",
+          "file": "src/controllers/webhooks.ts",
+          "lang": "ts",
+          "node": "payments",
+          "summary": "Confere a assinatura Stripe-Signature e, em payment_intent.succeeded, marca o pedido como pago.",
+          "code": "export async function stripeWebhookController(req: Request, res: Response) {\n  const sig = req.header('stripe-signature') ?? '';\n  let event: Stripe.Event;\n  try {\n    event = stripe.webhooks.constructEvent(req.body, sig, env.STRIPE_WEBHOOK_SECRET);\n  } catch {\n    return res.status(400).send('assinatura inválida');\n  }\n\n  if (event.type === 'payment_intent.succeeded') {\n    const orderId = event.data.object.metadata.orderId;\n    await ordersRepo.markPaid(orderId);\n  }\n  return res.sendStatus(200);\n}"
+        },
+        {
+          "id": "repo",
+          "label": "ordersRepo.markPaid",
+          "type": "repository",
+          "file": "src/repositories/orders.ts",
+          "lang": "ts",
+          "node": "db",
+          "summary": "Atualiza o status do pedido para paid.",
+          "code": "async markPaid(id: string) {\n  await db.query(\"UPDATE orders SET status = 'paid' WHERE id = $1\", [id]);\n}"
+        }
+      ],
+      "recommendations": {
+        "steps": [],
+        "edges": [],
+        "remove_edges": [],
+        "changes": [
+          {
+            "step": "repo",
+            "label": "Atualização idempotente",
+            "priority": "media",
+            "effort": "baixo",
+            "why": "O Stripe reenvia o mesmo evento. Só muda pedidos ainda pendentes e devolve se mudou algo.",
+            "code": "async markPaid(id: string) {\n  const r = await db.query(\n    \"UPDATE orders SET status = 'paid', paid_at = now() WHERE id = $1 AND status = 'pending'\",\n    [id],\n  );\n  return r.rowCount === 1;\n}"
+          }
+        ]
+      }
+    }
+  ]
 }

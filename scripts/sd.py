@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""system-design: mapa de arquitetura vivo do projeto.
+"""system-design: mapa de arquitetura vivo do projeto (infraestrutura e fluxos de código).
 
 Comandos:
   init        cria .system-design/ no projeto (copia este script e o viewer e registra a regra no AGENTS.md)
   validate    valida o map.json
-  build       gera AI-MAP.md e index.html
+  build       gera AI-MAP.md e index.html (lê do disco o código dos passos dos fluxos que têm file/lines)
   cves        procura vulnerabilidades conhecidas (OSV) nas dependências e grava cves.json
               lê package-lock.json, pnpm-lock.yaml, yarn.lock (v1), requirements*.txt (==) e poetry.lock;
               bun.lock, go.sum e Cargo.lock só geram aviso
@@ -18,9 +18,13 @@ Comandos:
   set         muda o estado de um nó ou tarefa: waiting | in_progress | done | blocked
   finalize    aplica a atualização ao mapa atual e fecha a aba Atualização
   discard     descarta a atualização pendente
+  check       confere se o mapa está em dia com o código (linhas dos fluxos, CVEs, componentes fora do mapa);
+              --fix corrige as linhas dos passos que mudaram de lugar
+  version     mostra a versão do sd.py
 """
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -36,6 +40,7 @@ from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+VERSION = "1.1.0"
 HERE = Path(__file__).resolve().parent
 DIRNAME = ".system-design"
 STATES = ("waiting", "in_progress", "done", "blocked")
@@ -54,6 +59,16 @@ OLD_RULES_BLOCK = RULES_BODY
 # slug do Simple Icons (a-z, 0-9) ou URL https
 LOGO_RE = re.compile(r"^(?:[a-z0-9]{1,64}|https://\S+)$")
 LOGO_HOST = "https://cdn.simpleicons.org/"
+
+# Fluxos de código
+STEP_TYPES = ("route", "middleware", "validator", "controller", "action", "service", "repository", "model",
+              "database", "external", "queue", "job", "response", "util", "config", "test")
+LINES_RE = re.compile(r"^\d+(?:-\d+)?$")
+# Arquivos que nunca são lidos para mostrar código (segredos e chaves).
+SECRET_FILE_RE = re.compile(r"(^|/)(\.env[^/]*|[^/]*\.(pem|key|p12|pfx|jks|keystore)|id_(rsa|dsa|ecdsa|ed25519)[^/]*"
+                            r"|[^/]*credentials[^/]*|[^/]*secrets?[^/]*\.(json|ya?ml|toml))$", re.I)
+MAX_CODE_LINES = 400
+MAX_CODE_BYTES = 60_000
 
 LEAK_WARNING = "AVISO: .system-design/ guarda a arquitetura, as limitações e as vulnerabilidades do projeto. Nunca deixe essa pasta vazar: não faça commit dela, não cole o conteúdo em issue, PR, chat público ou serviço externo."
 
@@ -116,7 +131,26 @@ def norm_map(m):
     rec.setdefault("nodes", [])
     rec.setdefault("edges", [])
     rec.setdefault("remove_edges", [])
+    m.setdefault("flows", [])
+    for f in m["flows"]:
+        norm_flow(f)
     return m
+
+
+def norm_flow(f):
+    f.setdefault("steps", [])
+    r = f.setdefault("recommendations", {})
+    for k in ("steps", "edges", "remove_edges", "changes"):
+        r.setdefault(k, [])
+    return f
+
+
+def flow_edges(f):
+    """Conexões do fluxo. Sem `edges`, os passos seguem em linha, na ordem da lista."""
+    if f.get("edges"):
+        return f["edges"]
+    st = f.get("steps", [])
+    return [{"from": a["id"], "to": b["id"]} for a, b in zip(st, st[1:])]
 
 
 def paths(d):
@@ -128,6 +162,7 @@ def paths(d):
         "ai": d / "AI-MAP.md",
         "html": d / "index.html",
         "hist": d / "history",
+        "skill": d / "skill.json",
     }
 
 
@@ -206,7 +241,82 @@ def validate_map(m):
     for e in rec["remove_edges"]:
         if (e.get("from"), e.get("to")) not in have:
             warns.append(f"remove_edges {e.get('from')}->{e.get('to')} não existe no mapa atual")
+    validate_flows(m["flows"], allids, errs, warns)
     return errs, warns
+
+
+def safe_rel(path):
+    """Caminho relativo à raiz do projeto, sem sair dela e sem apontar para arquivo de segredo."""
+    if not isinstance(path, str) or not path or path.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:", path):
+        return False
+    parts = path.replace("\\", "/").split("/")
+    return ".." not in parts and not SECRET_FILE_RE.search(path.replace("\\", "/"))
+
+
+def validate_flows(flows, node_ids, errs, warns):
+    fids = set()
+    for f in flows:
+        norm_flow(f)
+        fid = f.get("id", "")
+        tag = f"fluxo {fid}"
+        if not ID_RE.match(fid):
+            errs.append(f"id de fluxo inválido: '{fid}' (use a-z, 0-9, - e _)")
+        if fid in fids:
+            errs.append(f"id de fluxo duplicado: {fid}")
+        fids.add(fid)
+        if not f.get("label") and not f.get("route"):
+            errs.append(f"{tag}: label ou route é obrigatório")
+        if f.get("node") and f["node"] not in node_ids:
+            warns.append(f"{tag}: node '{f['node']}' não é um nó do mapa")
+        if not f["steps"]:
+            warns.append(f"{tag}: sem passos")
+        sids = set()
+
+        def check_step(s, where):
+            sid = s.get("id", "")
+            if not ID_RE.match(sid):
+                errs.append(f"{tag}: id de passo inválido: '{sid}'")
+            if sid in sids:
+                errs.append(f"{tag}: id de passo duplicado: {sid}")
+            sids.add(sid)
+            if not s.get("label"):
+                errs.append(f"{tag}: passo {sid} sem label")
+            if s.get("type") and s["type"] not in STEP_TYPES:
+                warns.append(f"{tag}: passo {sid} com type '{s['type']}' desconhecido (será tratado como util)")
+            if s.get("file") is not None and not safe_rel(s["file"]):
+                errs.append(f"{tag}: passo {sid}: file deve ser um caminho relativo ao projeto, sem '..' e sem arquivo de segredo")
+            if s.get("lines") is not None and not LINES_RE.match(str(s["lines"])):
+                errs.append(f"{tag}: passo {sid}: lines deve ser '10-42' ou '10'")
+            if s.get("node") and s["node"] not in node_ids:
+                warns.append(f"{tag}: passo {sid}: node '{s['node']}' não é um nó do mapa")
+            if isinstance(s.get("code"), str) and s["code"].count("\n") > MAX_CODE_LINES:
+                warns.append(f"{tag}: passo {sid} com mais de {MAX_CODE_LINES} linhas de código; mostre só o trecho que importa")
+            if not s.get("summary"):
+                warns.append(f"{tag}: passo {sid} sem summary")
+
+        for s in f["steps"]:
+            check_step(s, "steps")
+        base = set(sids)
+        for e in f.get("edges") or []:
+            for k in ("from", "to"):
+                if e.get(k) not in base:
+                    errs.append(f"{tag}: conexão {e.get('from')}->{e.get('to')}: passo '{e.get(k)}' não existe")
+        r = f["recommendations"]
+        for s in r["steps"]:
+            check_step(s, "recommendations.steps")
+        for e in r["edges"]:
+            for k in ("from", "to"):
+                if e.get(k) not in sids:
+                    errs.append(f"{tag}: conexão recomendada {e.get('from')}->{e.get('to')}: passo '{e.get(k)}' não existe")
+        have = {(e["from"], e["to"]) for e in flow_edges(f)}
+        for e in r["remove_edges"]:
+            if (e.get("from"), e.get("to")) not in have:
+                warns.append(f"{tag}: remove_edges {e.get('from')}->{e.get('to')} não existe no fluxo")
+        for c in r["changes"]:
+            if c.get("step") not in base:
+                errs.append(f"{tag}: changes aponta para o passo '{c.get('step')}', que não existe")
+            if not c.get("why"):
+                warns.append(f"{tag}: change de {c.get('step')} sem why")
 
 
 def report(errs, warns):
@@ -259,6 +369,11 @@ def apply_pending(m, p):
                     and edge_key(e) not in have]
     rec["remove_edges"] = [e for e in rec["remove_edges"] if edge_key(e) in have]
     m["nodes"], m["edges"], m["limits"] = nodes, edges, limits
+    rm_flows = set(p.get("remove_flows", []))
+    repl = {f["id"]: f for f in p.get("change_flows", [])}
+    flows = [repl.get(f["id"], f) for f in m["flows"] if f["id"] not in rm_flows]
+    flows.extend(p.get("add_flows", []))
+    m["flows"] = [norm_flow(json.loads(json.dumps(f))) for f in flows]
     m["version"] = int(m.get("version", 1)) + 1
     m["updated"] = now()
     return m
@@ -282,6 +397,9 @@ def compute_changes(old, new, p):
         "added_limits": [l["id"] for l in p.get("add_limits", [])],
         "removed_limits": list(p.get("remove_limits", [])),
         "implemented_recommendations": list(p.get("implements_recommendations", [])),
+        "added_flows": [f["id"] for f in p.get("add_flows", [])],
+        "changed_flows": [f["id"] for f in p.get("change_flows", [])],
+        "removed_flows": list(p.get("remove_flows", [])),
         "labels": labels,
     }
 
@@ -318,6 +436,8 @@ def build_ai_map(m, p=None, cves=None):
     a("- Se a tarefa mudar o fluxo (novo componente, banco, fila, cache, API externa, autenticação, deploy, conexão ou limite), não edite o código antes de propor e ter aprovação: use a skill system-design, rode `python3 .system-design/sd.py propose <arquivo.json>`, peça ao usuário para revisar a aba Atualização e espere com `python3 .system-design/sd.py wait`.")
     a("- Depois da aprovação, rode `sd.py set <id> in_progress` ao começar cada parte e `sd.py set <id> done` ao terminar. Com tudo concluído, rode `sd.py finalize`.")
     a("- Mudança dentro de um único componente, sem alterar conexões nem limites, não precisa de proposta.")
+    a("- Se a tarefa mexer em arquivos de um fluxo de código listado abaixo (nova rota, middleware, action, service ou mudança de ordem), atualize o fluxo em `flows` no map.json e rode `sd.py build` ao terminar.")
+    a("- Antes de tarefa de backend, rode `python3 .system-design/sd.py check` para ver se o mapa está em dia com o código. Depois de editar arquivos de um fluxo mapeado, rode `python3 .system-design/sd.py check --fix`.")
     a("")
     a(f"## Projeto: {pr.get('name', '')}")
     if pr.get("description"):
@@ -356,6 +476,29 @@ def build_ai_map(m, p=None, cves=None):
             lab = f'|{e["label"]}|' if e.get("label") else ""
             a(f"  {mm_id(e['from'])} -->{lab} {mm_id(e['to'])}")
         a("```")
+    a("")
+    a("## Fluxos de código")
+    if not m["flows"]:
+        a("- nenhum mapeado")
+    for f in m["flows"]:
+        head = " ".join(x for x in (f.get("method"), f.get("route")) if x)
+        title = f"{head}: {f.get('label', '')}" if head and f.get("label") else (head or f.get("label", f["id"]))
+        a("")
+        a(f"### {title} (id {f['id']}{', em ' + f['node'] if f.get('node') else ''})")
+        if f.get("description"):
+            a(f["description"])
+        for i, s in enumerate(f["steps"], 1):
+            loc = s.get("file", "") + (f":{s['lines']}" if s.get("file") and s.get("lines") else "")
+            sym = f" `{s['symbol']}`" if s.get("symbol") else ""
+            where = f" {loc}{sym}" if loc or sym else ""
+            a(f"{i}. {s['id']} [{s.get('type', 'util')}]{where}: {s.get('summary', s.get('label', ''))}")
+        if f.get("edges"):
+            a("Ordem: " + "; ".join(f"{e['from']} -> {e['to']}" + (f" ({e['label']})" if e.get("label") else "") for e in f["edges"]))
+        r = f["recommendations"]
+        for s in r["steps"]:
+            a(f"- recomendação [{s.get('priority', 'media')}] novo passo {s['id']} ({s.get('type', 'util')}{', ' + s['file'] if s.get('file') else ''}): {s.get('why', s.get('label', ''))}")
+        for c in r["changes"]:
+            a(f"- recomendação [{c.get('priority', 'media')}] alterar {c['step']}: {c.get('label', '')}. {c.get('why', '')}".rstrip())
     a("")
     a("## Limitações")
     if not m["limits"]:
@@ -486,6 +629,15 @@ def lock_packages(root):
     return pkgs, files, warns
 
 
+def lock_hash(root, files):
+    """sha256 dos lockfiles lidos (nome + conteúdo, em ordem de nome)."""
+    h = hashlib.sha256()
+    for name in sorted(files):
+        h.update(name.encode())
+        h.update((root / name).read_bytes())
+    return h.hexdigest()
+
+
 def http_json(url, body=None):
     req = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None,
                                  headers={"Content-Type": "application/json", "User-Agent": "system-design-sd"})
@@ -551,7 +703,7 @@ def cmd_cves(a):
                 "url": f"https://osv.dev/vulnerability/{vid}",
             })
     vulns.sort(key=lambda x: (SEV_ORDER.get(x["severity"], 9), x["package"]))
-    save(P["cves"], {"scanned_at": now(), "files": files, "packages": len(keys), "warnings": warns, "vulns": vulns})
+    save(P["cves"], {"scanned_at": now(), "files": files, "lock_hash": lock_hash(d.parent, files), "packages": len(keys), "warnings": warns, "vulns": vulns})
     do_build(d, quiet=True)
     by = {}
     for v in vulns:
@@ -568,14 +720,138 @@ def find_viewer():
     die("viewer.html não encontrado")
 
 
+def read_project_file(root, rel):
+    """Lê um arquivo do projeto com as regras de segurança (sem segredo, sem sair do projeto). Devolve (texto, erro)."""
+    if not safe_rel(rel):
+        return "", "caminho não permitido"
+    path = (root / rel).resolve()
+    try:
+        path.relative_to(root.resolve())
+    except ValueError:
+        return "", "fora do projeto"
+    try:
+        if path.stat().st_size > 2_000_000:
+            return "", "arquivo grande demais"
+        return path.read_text(encoding="utf-8", errors="replace"), ""
+    except OSError:
+        return "", "arquivo não encontrado"
+
+
+def read_snippet(root, rel, lines=None):
+    """Lê o trecho de código de um arquivo do projeto. Devolve (código, erro, linha inicial)."""
+    txt, err = read_project_file(root, rel)
+    if err:
+        return "", err, 1
+    all_lines = txt.splitlines()
+    start, end = 1, len(all_lines)
+    if lines:
+        a_, _, b_ = str(lines).partition("-")
+        start = max(1, int(a_))
+        end = min(len(all_lines), int(b_) if b_ else start)
+    cut = all_lines[start - 1:end]
+    note = ""
+    if len(cut) > MAX_CODE_LINES:
+        cut, note = cut[:MAX_CODE_LINES], f"cortado em {MAX_CODE_LINES} linhas"
+    code = "\n".join(cut)
+    if len(code) > MAX_CODE_BYTES:
+        code, note = code[:MAX_CODE_BYTES], "cortado por tamanho"
+    return code, note, start
+
+
+def fill_code(flows, root):
+    """Copia os fluxos e preenche `code` lendo `file`/`lines` do disco quando o passo não traz o código."""
+    out = []
+    for f in flows or []:
+        f = norm_flow(json.loads(json.dumps(f)))
+        for s in f["steps"] + f["recommendations"]["steps"]:
+            if not s.get("code") and s.get("file"):
+                code, note, start = read_snippet(root, s["file"], s.get("lines"))
+                s["code"], s["code_src"], s["code_start"] = code, "file", start
+                if note:
+                    s["code_note"] = note
+            elif s.get("code") and s.get("lines"):
+                s["code_start"] = int(str(s["lines"]).split("-")[0])
+        out.append(f)
+    return out
+
+
+JS_IMPORT = re.compile(r"""(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)['"]([^'"\n]+)['"]""")
+PY_IMPORT = re.compile(r"(?m)^[ \t]*(?:from[ \t]+([A-Za-z_]\w*)[\w.]*[ \t]+import|import[ \t]+([A-Za-z_]\w*))")
+
+
+def file_imports(code, lang):
+    """Pacotes externos importados por um arquivo (nome do pacote, sem subcaminho). Relativos e aliases ficam de fora."""
+    if lang == "py":
+        return {a or b for a, b in PY_IMPORT.findall(code)}
+    out = set()
+    for spec in JS_IMPORT.findall(code):
+        if spec.startswith((".", "/", "~", "#", "@/", "node:")) or "${" in spec:
+            continue
+        parts = spec.split("/")
+        out.add("/".join(parts[:2]) if spec.startswith("@") else parts[0])
+    return out
+
+
+def npm_graph(root):
+    """Dependências de cada pacote npm, lidas do package-lock.json."""
+    # shortcut: junta pelo nome as cópias de versões diferentes e ignora pnpm/yarn/poetry; trocar por árvore por versão se der falso positivo
+    try:
+        data = json.loads((root / "package-lock.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    g = {}
+    for key, info in (data.get("packages") or {}).items():
+        if key and not info.get("link"):
+            name = info.get("name") or key.split("node_modules/")[-1]
+            g.setdefault(name, set()).update(info.get("dependencies") or {}, info.get("optionalDependencies") or {})
+    return g
+
+
+def fill_deps(flows, root, graph, tree):
+    """Grava em cada passo os pacotes que o arquivo importa (`deps`) e em `tree` as dependências indiretas de cada um."""
+    for f in flows:
+        for s in f["steps"]:
+            if not s.get("file"):
+                continue
+            code, err, _ = read_snippet(root, s["file"])
+            if err and not code:
+                continue
+            lang = s.get("lang") or Path(s["file"]).suffix.lstrip(".")
+            deps = file_imports(code, "py" if lang in ("py", "python") else "js")
+            if graph:
+                deps = {x for x in deps if x in graph}
+            s["deps"] = sorted(deps)
+            for x in deps:
+                if x in tree:
+                    continue
+                seen, todo = set(), list(graph.get(x, ()))
+                while todo:
+                    y = todo.pop()
+                    if y not in seen and y != x:
+                        seen.add(y)
+                        todo.extend(graph.get(y, ()))
+                tree[x] = sorted(seen)
+
+
 def get_state(d, live=False):
     P = paths(d)
     m = read_map(d)
+    root, tree = d.parent, {}
+    graph = npm_graph(root)
+    m["flows"] = fill_code(m["flows"], root)
+    fill_deps(m["flows"], root, graph, tree)
+    p = load(P["pending"])
+    if p:
+        for k in ("add_flows", "change_flows"):
+            if p.get(k):
+                p[k] = fill_code(p[k], root)
+                fill_deps(p[k], root, graph, tree)
     return {
         "map": m,
-        "pending": load(P["pending"]),
+        "pending": p,
         "changes": load(P["changes"]),
         "cves": load(P["cves"]),
+        "dep_tree": tree,
         "live": live,
     }
 
@@ -632,10 +908,18 @@ def cmd_init(a):
     d = base_dir(create=True)
     d.mkdir(parents=True, exist_ok=True)
     (d / "history").mkdir(exist_ok=True)
+    P = paths(d)
     if HERE != d:
+        had = (d / "sd.py").exists()
+        try:
+            old_ver = json.loads(P["skill"].read_text(encoding="utf-8")).get("version")
+        except (OSError, ValueError, AttributeError):
+            old_ver = None
         shutil.copy2(__file__, d / "sd.py")
         shutil.copy2(find_viewer(), d / "viewer.html")
-    P = paths(d)
+        save(P["skill"], {"version": VERSION, "source": str(Path(__file__).resolve())})
+        if had and old_ver != VERSION:
+            print(f"ok: sd.py e viewer.html atualizados para a versão {VERSION}")
     if not P["map"].exists():
         save(P["map"], norm_map({"project": {"name": d.parent.name, "description": "", "hosting": {}}}))
     root = d.parent
@@ -670,7 +954,14 @@ def cmd_validate(a):
 
 
 def cmd_build(a):
-    do_build(base_dir())
+    d = base_dir()
+    do_build(d)
+    warn = skill_update_warning(d)
+    if warn:
+        print(warn)
+    n = len(check_flows(load(paths(d)["map"]), d.parent))
+    if n:
+        print(f"aviso: {n} passo(s) de fluxo com linhas desatualizadas; rode python3 .system-design/sd.py check --fix")
 
 
 def make_items(m, p):
@@ -707,7 +998,8 @@ def cmd_propose(a):
     if not p.get("title"):
         die("a proposta precisa de title")
     for k in ("add_nodes", "change_nodes", "remove_nodes", "add_edges", "remove_edges",
-              "add_limits", "remove_limits", "implements_recommendations", "tasks"):
+              "add_limits", "remove_limits", "implements_recommendations", "tasks",
+              "add_flows", "change_flows", "remove_flows"):
         p.setdefault(k, [])
     ids = {n["id"] for n in m["nodes"]}
     for n in p["add_nodes"]:
@@ -719,6 +1011,16 @@ def cmd_propose(a):
     for r in p["remove_nodes"]:
         if r not in ids:
             die(f"remove_nodes: '{r}' não existe")
+    fids = {f["id"] for f in m["flows"]}
+    for f in p["add_flows"]:
+        if f.get("id") in fids:
+            die(f"add_flows: '{f.get('id')}' já existe. Use change_flows.")
+    for f in p["change_flows"]:
+        if f.get("id") not in fids:
+            die(f"change_flows: '{f.get('id')}' não existe")
+    for r in p["remove_flows"]:
+        if r not in fids:
+            die(f"remove_flows: '{r}' não existe")
     # testa se o mapa resultante é válido
     trial = apply_pending(m, p)
     errs, warns = validate_map(trial)
@@ -881,6 +1183,175 @@ def cmd_discard(a):
     print("ok: atualização descartada")
 
 
+# ---------------------------------------------------------------- check (mapa x código)
+
+def version_tuple(v):
+    return tuple(int(x) for x in re.findall(r"\d+", v))
+
+
+def skill_update_warning(d):
+    """Aviso quando a skill instalada é mais nova que o sd.py deste projeto. Sem skill.json ou fonte legível, nada."""
+    try:
+        src = json.loads(paths(d)["skill"].read_text(encoding="utf-8"))["source"]
+        new = re.search(r'(?m)^VERSION\s*=\s*"([^"]+)"', Path(src).read_text(encoding="utf-8")).group(1)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return ""
+    if version_tuple(new) > version_tuple(VERSION):
+        return f"aviso: a skill instalada está na versão {new} e este projeto usa a {VERSION}. Atualize com: python3 {src} init"
+    return ""
+
+
+def def_line(all_lines, name, near):
+    """Linha (1-based) onde `name` é definido; sem definição, onde aparece como palavra. A mais perto de `near`."""
+    n = re.escape(name)
+    word = re.compile(rf"(?<![\w$]){n}(?![\w$])")
+    defn = re.compile(rf"\b(?:function\*?|def|class|const|let|var|async)\s+{n}(?![\w$])"
+                      rf"|^\s*(?:(?:export|public|private|protected|static|async|get|set)\s+)*{n}\s*[(:=]")
+    for rx in (defn, word):
+        hits = [i for i, l in enumerate(all_lines, 1) if rx.search(l)]
+        if hits:
+            return min(hits, key=lambda i: abs(i - near))
+    return None
+
+
+def check_flows(m, root):
+    """Passos de fluxo (map.json) cujo arquivo ou linhas não batem com o código.
+    Devolve [(texto, passo, linhas novas)]; linhas novas é None quando não dá para corrigir sozinho."""
+    out = []
+    for f in (m or {}).get("flows", []):
+        for s in f.get("steps", []):
+            if not s.get("file"):
+                continue
+            tag = f"fluxo {f.get('id', '')}, passo {s.get('id', '')}: {s['file']}"
+            txt, err = read_project_file(root, s["file"])
+            if err:
+                out.append((f"{tag}: arquivo não encontrado", s, None))
+                continue
+            lines = str(s.get("lines") or "")
+            if not LINES_RE.match(lines):
+                continue
+            all_lines = txt.splitlines()
+            a_, _, b_ = lines.partition("-")
+            start, end = int(a_), int(b_ or a_)
+            sym = s.get("symbol")
+            if sym:
+                name = re.split(r"[.:#]", str(sym).replace("()", ""))[-1].strip()
+                word = re.compile(rf"(?<![\w$]){re.escape(name)}(?![\w$])")
+                if name and not any(word.search(l) for l in all_lines[start - 1:end]):
+                    i = def_line(all_lines, name, start)
+                    if i is None:
+                        out.append((f"{tag}: símbolo {sym} não encontrado em {s['file']}", s, None))
+                    else:
+                        new = f"{i}-{min(len(all_lines), i + end - start)}" if b_ else str(i)
+                        out.append((f"{tag} linhas {lines} → {new}", s, new))
+                    continue
+            if end > len(all_lines):
+                new = f"{start}-{len(all_lines)}" if start < len(all_lines) else None
+                out.append((f"{tag}: linhas {lines} passam do fim do arquivo ({len(all_lines)} linhas)"
+                            + (f" → {new}" if new else ""), s, new))
+    return out
+
+
+# dependência conhecida -> outros nomes que contam como "já está no mapa"
+INFRA_DEPS = {
+    "pg": ("postgres",), "mysql2": ("mysql",), "mongoose": ("mongo",), "mongodb": ("mongo",),
+    "prisma": (), "@prisma/client": ("prisma",), "redis": (), "ioredis": ("redis",), "bullmq": ("redis",),
+    "amqplib": ("rabbitmq",), "kafkajs": ("kafka",), "stripe": (), "@supabase/supabase-js": ("supabase",),
+    "firebase": (), "firebase-admin": ("firebase",), "resend": (), "nodemailer": ("smtp",),
+    "@sendgrid/mail": ("sendgrid",), "openai": (), "@anthropic-ai/sdk": ("anthropic", "claude"),
+    "@sentry/node": ("sentry",), "twilio": (),
+    "psycopg2": ("postgres",), "psycopg": ("postgres",), "sqlalchemy": ("postgres", "mysql", "sqlite"),
+    "celery": (), "boto3": ("s3", "aws"), "anthropic": ("claude",), "sentry-sdk": ("sentry",), "pymongo": ("mongo",),
+}
+PY_INFRA = ("psycopg2", "psycopg", "sqlalchemy", "redis", "celery", "stripe", "boto3", "openai", "anthropic", "sentry-sdk", "pymongo")
+
+
+def infra_candidates(root):
+    """Componentes de infraestrutura que aparecem no projeto: [(nome, onde, aliases)]."""
+    # shortcut: lê só a raiz do projeto e casa nomes por regex; trocar por parser de verdade se der falso positivo
+    found = {}
+    for name in ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"):
+        try:
+            txt = (root / name).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        sec = re.search(r"(?ms)^services:[ \t]*\n(.*?)(?=^\S|\Z)", txt)
+        ind = sec and re.search(r"(?m)^([ \t]+)[^\s#]", sec.group(1))
+        if ind:
+            for svc in re.findall(r"(?m)^" + re.escape(ind.group(1)) + r"[\"']?([\w.-]+)[\"']?\s*:", sec.group(1)):
+                found.setdefault(svc, (name, ()))
+    try:
+        pj = json.loads((root / "package.json").read_text(encoding="utf-8"))
+        deps = pj.get("dependencies") or {}
+    except (OSError, ValueError, AttributeError):
+        deps = {}
+    for dep in deps:
+        if dep in INFRA_DEPS:
+            found.setdefault(dep, ("package.json", INFRA_DEPS[dep]))
+        elif dep.startswith("@aws-sdk/"):
+            found.setdefault(dep, ("package.json", ("s3", "aws")))
+    for path in [*sorted(root.glob("requirements*.txt")), root / "pyproject.toml"]:
+        try:
+            txt = path.read_text(encoding="utf-8").lower().replace("_", "-")
+        except OSError:
+            continue
+        for dep in PY_INFRA:
+            if re.search(rf"(?<![\w-]){re.escape(dep)}(?![\w-])", txt):
+                found.setdefault(dep, (path.name, INFRA_DEPS.get(dep, ())))
+    return [(k, w, al) for k, (w, al) in found.items()]
+
+
+def unmapped_infra(m, root):
+    hay = " ".join(str(n.get(k, "")) for n in m.get("nodes", []) + (m.get("recommendations") or {}).get("nodes", [])
+                   for k in ("id", "label", "tech", "description")).lower()
+    out = []
+    for name, where, aliases in infra_candidates(root):
+        if not any(re.search(rf"(?<![a-z0-9]){re.escape(t.lower())}(?![a-z0-9])", hay) for t in (name, *aliases)):
+            out.append(f"possível componente fora do mapa: {name} ({where})")
+    return out
+
+
+def cmd_check(a):
+    d = base_dir()
+    P = paths(d)
+    root = d.parent
+    m = load(P["map"])
+    if m is None:
+        die("map.json não existe. Rode init e escreva o mapa.")
+    issues, fixed = [], 0
+    for text, step, new in check_flows(m, root):
+        if a.fix and new:
+            step["lines"] = new
+            fixed += 1
+            print(f"corrigido: {text}")
+        else:
+            issues.append(text)
+    if fixed:
+        save(P["map"], m)
+        do_build(d, quiet=True)
+    _, files, _ = lock_packages(root)
+    if files:  # sem lockfile não há o que varrer
+        cves = load(P["cves"])
+        if cves is None:
+            issues.append("sem varredura de CVEs; rode sd.py cves")
+        elif cves.get("lock_hash") != lock_hash(root, files):
+            issues.append("as dependências mudaram desde a última varredura; rode sd.py cves")
+    issues += unmapped_infra(m, root)
+    warn = skill_update_warning(d)
+    if warn:
+        issues.append(warn)
+    for i in issues:
+        print(i)
+    if issues:
+        print(f"{len(issues)} problema(s) encontrado(s)" + (f", {fixed} corrigido(s)" if fixed else ""))
+        sys.exit(1)
+    print("ok: mapa em dia com o código")
+
+
+def cmd_version(a):
+    print(f"system-design {VERSION}")
+
+
 # ---------------------------------------------------------------- servidor
 
 def make_handler(d, port):
@@ -999,6 +1470,10 @@ def main():
     s.add_argument("--force", action="store_true")
     s.set_defaults(fn=cmd_finalize)
     sub.add_parser("discard").set_defaults(fn=cmd_discard)
+    s = sub.add_parser("check")
+    s.add_argument("--fix", action="store_true", help="corrige as linhas dos passos que mudaram de lugar")
+    s.set_defaults(fn=cmd_check)
+    sub.add_parser("version").set_defaults(fn=cmd_version)
     a = ap.parse_args()
     a.fn(a)
 

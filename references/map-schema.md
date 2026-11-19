@@ -76,6 +76,52 @@
 
 **recommendations.edges**: conexões do mapa recomendado (podem ligar nós existentes e recomendados). **remove_edges**: conexões atuais que a recomendação substitui (aparecem tracejadas em vermelho).
 
+## Fluxos de código (`flows`)
+
+Guia completo em `code-flows.md`. Cada fluxo é uma rota ou job, com os passos que a requisição percorre no código.
+
+```json
+"flows": [
+  {
+    "id": "post-orders",
+    "label": "Criar pedido",
+    "method": "POST",
+    "route": "/api/orders",
+    "node": "api",
+    "description": "Cria o pedido, abre a cobrança e avisa o worker.",
+    "steps": [
+      { "id": "router", "label": "Rota POST /api/orders", "type": "route", "file": "src/routes/orders.ts", "lines": "1-15", "symbol": "ordersRouter.post", "summary": "Registra a rota e encadeia auth e validação." },
+      { "id": "auth-mw", "label": "requireAuth", "type": "middleware", "file": "src/middlewares/auth.ts", "lines": "1-17", "node": "auth", "summary": "Valida o token; sem token válido responde 401." },
+      { "id": "action", "label": "createOrder", "type": "action", "file": "src/actions/create-order.ts", "lines": "1-20", "node": "payments", "summary": "Calcula o total, grava o pedido e cria a cobrança." }
+    ],
+    "edges": [
+      { "from": "router", "to": "auth-mw", "label": "next()" },
+      { "from": "auth-mw", "to": "action" }
+    ],
+    "recommendations": {
+      "steps": [
+        { "id": "idem-mw", "label": "idempotency", "type": "middleware", "file": "src/middlewares/idempotency.ts", "summary": "Devolve a mesma resposta para a mesma Idempotency-Key.", "why": "Retry do cliente cria pedido duplicado.", "priority": "alta", "effort": "baixo", "code": "export async function idempotency(req, res, next) { ... }" }
+      ],
+      "edges": [ { "from": "auth-mw", "to": "idem-mw" }, { "from": "idem-mw", "to": "action" } ],
+      "remove_edges": [ { "from": "auth-mw", "to": "action" } ],
+      "changes": [
+        { "step": "action", "label": "Transação com outbox", "why": "Pedido e evento gravados juntos.", "priority": "alta", "effort": "médio", "code": "export async function createOrder(...) { ... }" }
+      ]
+    }
+  }
+]
+```
+
+**flow**: `id` (a-z, 0-9, `-`, `_`), `label` e/ou `route`, `method` (`GET`, `POST`... ou `CRON`, `EVENT`, `JOB` para o que não é HTTP), `node` (nó de infraestrutura onde o fluxo roda), `description`, `steps`, `edges` opcional e `recommendations`.
+
+**step**: `id` único no fluxo, `label`, `type` (`route`, `middleware`, `validator`, `controller`, `action`, `service`, `repository`, `model`, `database`, `external`, `queue`, `job`, `response`, `util`, `config`, `test`), `summary` (o que faz), `file` (caminho relativo à raiz do projeto), `lines` (`"10-42"` ou `"10"`), `symbol`, `lang` (deduzido da extensão se faltar), `node` (nó do mapa que o passo usa) e `code` (opcional).
+
+**code**: sem `code`, o `sd.py` lê `file` + `lines` do disco ao gerar a página (até 400 linhas). Use `code` só para passos recomendados e para apps novos, em que o arquivo ainda não existe. O `file` não pode sair da raiz do projeto (`..`, caminho absoluto) nem apontar para `.env*`, chaves (`.pem`, `.key`) ou arquivos de credenciais.
+
+**edges**: sem `edges`, os passos ficam ligados em linha, na ordem da lista. Use `edges` quando o fluxo se ramifica (ex.: o controller chama a action e depois responde).
+
+**recommendations**: `steps` (passos novos, com `why`, `priority`, `effort` e `code` sugerido), `edges` (conexões do fluxo recomendado), `remove_edges` (conexões atuais que saem) e `changes` (mudança num passo existente: `step`, `label`, `why`, `priority`, `effort` e `code` sugerido). Os ids de `steps` recomendados não podem repetir ids de passos atuais.
+
 ## Proposta (entrada do `sd.py propose`)
 
 ```json
@@ -101,9 +147,11 @@
 }
 ```
 
+A proposta também aceita `add_flows` (fluxos novos, no formato acima), `change_flows` (fluxos inteiros que substituem os de mesmo `id`) e `remove_flows` (ids). Eles são aplicados no `finalize` e, enquanto a proposta está aberta, aparecem na aba Fluxo de código marcados como propostos. Fluxos não viram itens rastreáveis: use `tasks` para acompanhar a implementação.
+
 Cada nó em `add_nodes`, `change_nodes` e `remove_nodes` e cada item de `tasks` vira um item rastreável (`sd.py set <id> <estado>`). Estados: `waiting`, `in_progress`, `done` e `blocked`. Se o `id` de um item de `add_nodes` for o de uma recomendação, ela vira nó real e sai das recomendações ao finalizar.
 
-Num projeto novo (Modo 2), a proposta inicial costuma ter só `add_nodes`, `add_edges`, `add_limits` e `tasks`.
+Num projeto novo (Modo 2), a proposta inicial costuma ter `add_nodes`, `add_edges`, `add_limits`, `add_flows` (a estrutura de código planejada das rotas principais) e `tasks`.
 
 ## Ciclo de status da atualização
 
