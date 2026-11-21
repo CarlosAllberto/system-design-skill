@@ -18,7 +18,7 @@ English • <a href="README.pt-BR.md">Português</a>
 
 system-design is a skill for AI agents. It keeps the project's architecture in `.system-design/` (components, connections, capacity limits, recommendations and dependency vulnerabilities) and shows everything on a local n8n-style page.
 
-It also maps **code flows**: for each important route (for example `POST /api/orders`), the path the request takes through the code (route, middlewares, validation, controller, action, repository, response), with each file's code and a summary of what it does. A **With recommendations** toggle shows suggested new steps and suggested code changes.
+It also maps **code flows**: for every route and job (for example `POST /api/orders`), the path the request takes through the code (route, middlewares, validation, controller, action, repository, response), with each file's code and a summary of what it does. A **With recommendations** toggle shows suggested new steps and suggested code changes.
 
 The AI reads a summary of the map before touching the backend. When a task changes the flow (a new database, queue, external API or deploy), it proposes the change, you approve it on the page, and only then does it implement it, reporting progress in real time.
 
@@ -89,40 +89,54 @@ The command installs the skill in the compatible agents you use. The repository 
 
 **Update the skill.** Run `npx skills add CarlosAllberto/system-design-skill` again. It fetches the latest version from GitHub.
 
-**Bring the new version into a project you already mapped.** Ask the agent "update the system design of this project", or run:
-
-```bash
-python3 <skill path>/scripts/sd.py init
-python3 .system-design/sd.py build
-```
-
-`init` only re-copies `sd.py` and the page. The map, flows, history and CVEs are kept. `build` warns when the project copy is older than the installed skill, and `python3 .system-design/sd.py version` shows the version.
-
-**Re-read the project after the code changed outside the agent.** Ask the agent to resync the map (mode 5). To do it by hand, `python3 .system-design/sd.py check` lists what drifted from the code and `check --fix` fixes the line ranges of the flow steps. Infrastructure changes still go through the approval proposal. After dependency changes, run `sd.py cves` again.
+**Bring the new version into a project you already mapped, or re-read the project after the code changed outside the agent.** Run `/system-design update`. The agent re-copies `sd.py` and the page (the map, flows, history and CVEs are kept), checks what drifted from the code, fixes the flow line ranges, proposes infrastructure changes for approval and refreshes the CVEs if dependencies changed. `/system-design version` shows the project's version.
 
 ## Usage
 
-Ask the agent something like "map the system design of this project". The skill has 5 modes:
+Call the skill with a command. The agent runs the scripts behind the scenes, so you never type `python3`:
 
-| Mode | When | What happens |
-| --- | --- | --- |
-| 1. Map an existing project | The project already has code | The AI reads the code, asks all its questions in one round and writes `map.json` with nodes, connections, limits, recommendations and the code flows of the main routes |
-| 2. Design a new backend | New app, no backend yet | The target architecture and the planned code flows (with starter code) become a proposal with implementation tasks |
-| 3. Propose before changing the flow | New component, database, queue, cache, external API, authentication or deploy | The AI registers the proposal and waits for you to approve it in the update tab |
-| 4. Run the approved update | After approval | Each item goes through `waiting`, `in_progress` and `done`; at the end `finalize` updates the map |
-| 5. Resync with the code | The code changed outside the agent, or after a skill update | The AI starts from the current map, runs `check`, fixes flow line ranges, proposes infrastructure changes for approval and refreshes the CVEs if dependencies changed |
-
-To map only the code of one route, ask something like "map the code flow of api/users" or "show the code flow of POST /api/orders with recommendations".
-
-Useful commands, from the project root:
-
-```bash
-python3 .system-design/sd.py serve --open
-python3 .system-design/sd.py cves
-python3 .system-design/sd.py build
-python3 .system-design/sd.py check
-python3 .system-design/sd.py version
+```text
+/system-design init                         map the project (or design the backend, if it has none yet)
+/system-design run                          open the map page in the browser
+/system-design update                       resync the map with the code and the skill version
+/system-design status                       version, pending update and drift from the code
+/system-design flow POST /api/orders        map the code flow of a route
+/system-design propose add Redis            propose an infrastructure change for you to approve
+/system-design approve                      approve the proposal (the page button does the same)
+/system-design apply                        implement the approved update
+/system-design help                         list every command
 ```
+
+| Command | What it does |
+| --- | --- |
+| `init` | Maps the project: reads the code, asks all its questions in one round and writes the map with nodes, connections, limits, recommendations, CVEs and the code flow of every route and job in the project. In a project with no backend, it designs the target architecture as a proposal. If the project is already mapped, it runs `update` |
+| `new [idea]` | Designs the backend of a new app from the idea |
+| `run` | Builds and opens the live page (`http://localhost:4747`) |
+| `update` | Resyncs the map with the code (mapping new routes) and brings the new skill version into the project |
+| `status` | Shows the version, the state of the pending update and drift from the code |
+| `flow <route>` | Maps or updates the code flow of a route. Add "with recommendations" to get code suggestions |
+| `propose <change>` | Registers an infrastructure change (database, queue, cache, external API, deploy) and waits for your approval in the update tab |
+| `approve` / `reject [reason]` / `discard` | Approves, rejects or discards the proposal |
+| `apply` | Implements the approved update, reporting each item's progress on the page |
+| `check [--fix]` | Checks whether the map matches the code; `--fix` fixes the flow line ranges |
+| `cves` | Scans the dependencies for known vulnerabilities |
+| `build` | Regenerates the page and the AI summary |
+| `version` | Shows the skill version in the project |
+| `help` | Lists the commands |
+
+Commands also accept Portuguese aliases (`mapear`, `abrir`, `atualizar`, `fluxo`, `propor`, `aprovar`, `implementar`, `ajuda`). With no command, `/system-design` shows the `status`. Natural-language requests still work, such as "map the system design of this project" or "show the code flow of POST /api/orders with recommendations".
+
+Behind the commands, the skill follows 5 modes:
+
+| Mode | Command | What happens |
+| --- | --- | --- |
+| 1. Map an existing project | `init` | The AI reads the code, asks all its questions in one round and writes `map.json`, with the code flow of every route |
+| 2. Design a new backend | `init` or `new` | The target architecture and the planned code flows (with starter code) become a proposal with implementation tasks |
+| 3. Propose before changing the flow | `propose` | The AI registers the proposal and waits for you to approve it in the update tab. It also does this on its own before any task that changes the infrastructure |
+| 4. Run the approved update | `apply` | Each item goes through `waiting`, `in_progress` and `done`; at the end the map is updated |
+| 5. Resync with the code | `update` | The AI starts from the current map, fixes flow line ranges, proposes infrastructure changes for approval and refreshes the CVEs if dependencies changed |
+
+The commands work in agents with skill slash commands, such as Claude Code. In another agent, ask in text ("system-design run") or run the CLI directly: `python3 .system-design/sd.py <command>` (see `sd.py --help`).
 
 An example to try is in [`examples/map.example.json`](examples/map.example.json). To see the vulnerabilities tab, also copy [`examples/cves.example.json`](examples/cves.example.json) to `.system-design/cves.json` (the data is fictional) and run `build`.
 
