@@ -18,7 +18,7 @@ English • <a href="README.pt-BR.md">Português</a>
 
 system-design is a skill for AI agents. It keeps the project's architecture in `.system-design/` (components, connections, capacity limits, recommendations and dependency vulnerabilities) and shows everything on a local n8n-style page.
 
-It also maps **code flows**: for each important route (for example `POST /api/orders`), the path the request takes through the code (route, middlewares, validation, controller, action, repository, response), with each file's code and a summary of what it does. A **With recommendations** toggle shows suggested new steps and suggested code changes.
+It also maps **code flows**: for every route and job (for example `POST /api/orders`), the path the request takes through the code (route, middlewares, validation, controller, action, repository, response), with each file's code and a summary of what it does. A **With recommendations** toggle shows suggested new steps and suggested code changes.
 
 The AI reads a summary of the map before touching the backend. When a task changes the flow (a new database, queue, external API or deploy), it proposes the change, you approve it on the page, and only then does it implement it, reporting progress in real time.
 
@@ -109,10 +109,10 @@ Call the skill with a command. The agent runs the scripts behind the scenes, so 
 
 | Command | What it does |
 | --- | --- |
-| `init` | Maps the project: reads the code, asks all its questions in one round and writes the map with nodes, connections, limits, recommendations, CVEs and the flows of the main routes. In a project with no backend, it designs the target architecture as a proposal. If the project is already mapped, it runs `update` |
+| `init` | Maps the project: reads the code, asks all its questions in one round and writes the map with nodes, connections, limits, recommendations, CVEs and the code flow of every route and job in the project. In a project with no backend, it designs the target architecture as a proposal. If the project is already mapped, it runs `update` |
 | `new [idea]` | Designs the backend of a new app from the idea |
 | `run` | Builds and opens the live page (`http://localhost:4747`) |
-| `update` | Resyncs the map with the code and brings the new skill version into the project |
+| `update` | Resyncs the map with the code (mapping new routes) and brings the new skill version into the project |
 | `status` | Shows the version, the state of the pending update and drift from the code |
 | `flow <route>` | Maps or updates the code flow of a route. Add "with recommendations" to get code suggestions |
 | `propose <change>` | Registers an infrastructure change (database, queue, cache, external API, deploy) and waits for your approval in the update tab |
@@ -130,7 +130,7 @@ Behind the commands, the skill follows 5 modes:
 
 | Mode | Command | What happens |
 | --- | --- | --- |
-| 1. Map an existing project | `init` | The AI reads the code, asks all its questions in one round and writes `map.json` |
+| 1. Map an existing project | `init` | The AI reads the code, asks all its questions in one round and writes `map.json`, with the code flow of every route |
 | 2. Design a new backend | `init` or `new` | The target architecture and the planned code flows (with starter code) become a proposal with implementation tasks |
 | 3. Propose before changing the flow | `propose` | The AI registers the proposal and waits for you to approve it in the update tab. It also does this on its own before any task that changes the infrastructure |
 | 4. Run the approved update | `apply` | Each item goes through `waiting`, `in_progress` and `done`; at the end the map is updated |

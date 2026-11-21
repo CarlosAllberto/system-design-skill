@@ -6,15 +6,23 @@ Os fluxos ficam em `flows` no `map.json` (formato em `map-schema.md`) e aparecem
 
 ## Quais fluxos mapear
 
-Mapeie as rotas que importam, não todas:
+No `init` (Modo 1), mapeie **todas** as rotas e todos os jobs do projeto, um fluxo por rota:
+
+1. Faça primeiro o inventário completo: procure todos os pontos de entrada nos padrões do passo 1 de "Como rastrear um fluxo" (rotas HTTP com cada método, server actions, webhooks, rotas de GraphQL ou tRPC, jobs, crons e consumidores de fila). Cada método de um mesmo path é um fluxo à parte (`GET /api/users` e `POST /api/users`).
+2. Rastreie cada um conforme este guia. Middlewares e helpers compartilhados entram como passo em todos os fluxos que passam por eles, apontando para o mesmo arquivo e as mesmas linhas.
+3. Num projeto grande, trabalhe em lotes (por pasta ou por módulo) até cobrir o inventário inteiro. Se dividir entre subagentes, passe a cada um a sua lista de rotas e este guia.
+4. Rotas triviais (health check, arquivos estáticos, redirect) podem ter um fluxo curto, só com `route` e `response`, mas não ficam de fora.
+5. Ao terminar, compare o inventário com `flows` no `map.json` e diga ao usuário quantas rotas foram mapeadas. Se alguma ficou de fora (código gerado, rota dinâmica que não dá para rastrear), registre o motivo no `description` de um fluxo vizinho ou diga no resumo final.
+
+As recomendações de código (`recommendations` de cada fluxo) não precisam cobrir todas as rotas. Avalie com mais cuidado as que importam mais:
 
 1. Escrita de dinheiro ou de dados críticos: pagamento, pedido, cadastro, webhook.
 2. Autenticação: login, cadastro, refresh de token, recuperação de senha.
-3. As 2 ou 3 rotas mais chamadas (listagem principal, busca, feed).
+3. As rotas mais chamadas (listagem principal, busca, feed).
 4. Jobs, crons e consumidores de fila que mexem em dados.
 5. Qualquer rota que o usuário citar.
 
-Num projeto grande, comece com 3 a 6 fluxos e pergunte se ele quer mais (na rodada única de perguntas).
+No `update` (Modo 5), refaça o inventário e mapeie as rotas novas que ainda não têm fluxo. Rota que sumiu do código sai de `flows`.
 
 ## Como rastrear um fluxo
 

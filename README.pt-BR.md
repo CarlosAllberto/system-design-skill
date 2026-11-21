@@ -18,7 +18,7 @@
 
 O system-design é uma skill para agentes de IA. Ela guarda a arquitetura do projeto em `.system-design/` (componentes, conexões, limites de capacidade, recomendações e vulnerabilidades das dependências) e mostra tudo numa página local no estilo n8n.
 
-Ela também mapeia **fluxos de código**: para cada rota importante (por exemplo `POST /api/orders`), o caminho que a requisição faz no código (rota, middlewares, validação, controller, action, repositório, resposta), com o código de cada arquivo e um resumo do que ele faz. O botão **Com recomendações** mostra os passos novos sugeridos e as mudanças de código sugeridas.
+Ela também mapeia **fluxos de código**: para cada rota e job (por exemplo `POST /api/orders`), o caminho que a requisição faz no código (rota, middlewares, validação, controller, action, repositório, resposta), com o código de cada arquivo e um resumo do que ele faz. O botão **Com recomendações** mostra os passos novos sugeridos e as mudanças de código sugeridas.
 
 A IA lê um resumo do mapa antes de mexer em backend. Quando uma tarefa muda o fluxo (novo banco, fila, API externa, deploy), ela propõe a mudança, você aprova na página e só então ela implementa, marcando o progresso em tempo real.
 
@@ -109,10 +109,10 @@ Chame a skill com um comando. O agente roda os scripts por trás, você não pre
 
 | Comando | O que faz |
 | --- | --- |
-| `init` | Mapeia o projeto: lê o código, faz todas as perguntas numa rodada só e escreve o mapa com nós, conexões, limites, recomendações, CVEs e os fluxos das rotas principais. Num projeto sem backend, desenha a arquitetura alvo como proposta. Se o projeto já foi mapeado, faz o `update` |
+| `init` | Mapeia o projeto: lê o código, faz todas as perguntas numa rodada só e escreve o mapa com nós, conexões, limites, recomendações, CVEs e o fluxo de código de todas as rotas e jobs do projeto. Num projeto sem backend, desenha a arquitetura alvo como proposta. Se o projeto já foi mapeado, faz o `update` |
 | `new [ideia]` | Desenha o backend de um app novo a partir da ideia |
 | `run` | Gera e abre a página ao vivo (`http://localhost:4747`) |
-| `update` | Ressincroniza o mapa com o código e leva a versão nova da skill para o projeto |
+| `update` | Ressincroniza o mapa com o código (mapeando as rotas novas) e leva a versão nova da skill para o projeto |
 | `status` | Mostra a versão, o estado da atualização pendente e as divergências do código |
 | `flow <rota>` | Mapeia ou atualiza o fluxo de código de uma rota. Acrescente "com recomendações" para receber sugestões de código |
 | `propose <mudança>` | Registra uma mudança de infraestrutura (banco, fila, cache, API externa, deploy) e espera você aprovar na aba Atualização |
@@ -130,7 +130,7 @@ Por trás dos comandos, a skill segue 5 modos:
 
 | Modo | Comando | O que acontece |
 | --- | --- | --- |
-| 1. Mapear um projeto existente | `init` | A IA lê o código, faz todas as perguntas numa rodada só e escreve o `map.json` |
+| 1. Mapear um projeto existente | `init` | A IA lê o código, faz todas as perguntas numa rodada só e escreve o `map.json`, com o fluxo de código de todas as rotas |
 | 2. Desenhar um backend novo | `init` ou `new` | A arquitetura alvo e os fluxos de código planejados (com código inicial) viram uma proposta com tarefas de implementação |
 | 3. Propor antes de mudar o fluxo | `propose` | A IA registra a proposta e espera você aprovar na aba Atualização. Ela também faz isso sozinha antes de qualquer tarefa que mude a infraestrutura |
 | 4. Executar a atualização aprovada | `apply` | Cada item passa por `waiting`, `in_progress` e `done`; no fim o mapa é atualizado |

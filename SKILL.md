@@ -1,7 +1,7 @@
 ---
 name: system-design
 argument-hint: "[init | run | update | status | flow <rota> | propose <mudança> | approve | apply | check | cves | help]"
-description: Plans and maintains the project's system design as a live map (n8n-style nodes and connections, limits, architecture recommendations and dependency CVEs) on a local page, plus code flows that trace each important route through its files (route, middleware, validation, controller, action, repository) with each file's code, a summary and optional code recommendations. Use it to map an existing system and to design the backend of a new app from scratch. Use it when the user asks for system design, an architecture map, a connection diagram, a code flow or request flow of a route (e.g. api/users), capacity limits, scaling or dependency vulnerabilities, when planning the backend of a new app, and before any task that changes the flow (new service, database, queue, cache, external API, authentication, deploy) to propose it and get approval on the map before implementing. Also use it when invoked as /system-design with a subcommand (init, run, update, status, flow, propose, approve, apply, check, cves, help).
+description: Plans and maintains the project's system design as a live map (n8n-style nodes and connections, limits, architecture recommendations and dependency CVEs) on a local page, plus code flows that trace every route through its files (route, middleware, validation, controller, action, repository) with each file's code, a summary and optional code recommendations. Use it to map an existing system and to design the backend of a new app from scratch. Use it when the user asks for system design, an architecture map, a connection diagram, a code flow or request flow of a route (e.g. api/users), capacity limits, scaling or dependency vulnerabilities, when planning the backend of a new app, and before any task that changes the flow (new service, database, queue, cache, external API, authentication, deploy) to propose it and get approval on the map before implementing. Also use it when invoked as /system-design with a subcommand (init, run, update, status, flow, propose, approve, apply, check, cves, help).
 ---
 
 # System Design
@@ -38,10 +38,10 @@ Os scripts: `<skill>/scripts/sd.py` é o `sd.py` da mesma pasta deste SKILL.md, 
 
 | Comando | Apelidos | O que fazer |
 |---|---|---|
-| `init` | `map`, `mapear` | Mapeia o projeto. Se `.system-design/` já existe, faça o `update`. Se o projeto não tem backend, siga o Modo 2; senão, o Modo 1 inteiro (com a rodada de perguntas da regra de ouro). |
+| `init` | `map`, `mapear` | Mapeia o projeto, incluindo o fluxo de código de todas as rotas e jobs. Se `.system-design/` já existe, faça o `update`. Se o projeto não tem backend, siga o Modo 2; senão, o Modo 1 inteiro (com a rodada de perguntas da regra de ouro). |
 | `new [ideia]` | `design`, `novo` | Desenha o backend de um app novo (Modo 2). A ideia, se vier, é o ponto de partida das perguntas de `references/greenfield.md`. |
 | `run` | `open`, `serve`, `abrir` | Abre a página ao vivo: rode `sd.py build` e depois `sd.py serve --open` em segundo plano, e passe o endereço (padrão `http://localhost:4747`). Se a porta estiver ocupada por uma página já aberta, só passe o endereço. |
-| `update` | `sync`, `atualizar` | Ressincroniza o mapa com o código e com a versão instalada da skill (Modo 5 inteiro). |
+| `update` | `sync`, `atualizar` | Ressincroniza o mapa com o código e com a versão instalada da skill (Modo 5 inteiro), incluindo os fluxos de rotas novas. |
 | `status` | `st` | Rode `sd.py version`, `sd.py status` e `sd.py check`. Resuma em até 5 linhas: versão, se há atualização pendente e em que estado, divergências do código e próximos comandos úteis. |
 | `flow <rota>` | `fluxo` | Mapeia ou atualiza o fluxo de código da rota (ex.: `flow POST /api/orders`), seguindo `references/code-flows.md`, e roda `sd.py build`. Se o texto pedir recomendações ("com recomendações"), preencha as do fluxo. Sem rota, liste os fluxos do `map.json` e pergunte qual. |
 | `propose <mudança>` | `propor` | Monta a proposta da mudança descrita (Modo 3, passos 1 a 3), roda `sd.py propose` e pede a revisão na aba Atualização. Não implemente nada. |
@@ -76,9 +76,9 @@ Se o usuário não souber uma resposta, registre `desconhecido` com `severity: i
    - **nodes** e **edges** reais (o que existe hoje). Preencha `logo` com o slug do Simple Icons (ex.: `supabase`, `nextdotjs`, `stripe`) quando o componente for de uma marca conhecida. Aceita só slug ou URL `https`.
    - **limits**: use `references/limits-checklist.md`. Cada limite pertence a um nó e tem `scope`: `hosting` (limite da hospedagem: RAM, CPU, disco, banda) ou `service`/`app` (limite do serviço ou do código: conexões do banco, rate limit de API de terceiro, MAUs do auth, tamanho de payload).
    - **recommendations**: pense como um sistema bancário grande, usando `references/recommendations-catalog.md`. Recomende só o que resolve um limite ou risco real deste projeto e preencha `why`, `priority`, `effort` e `resolves`.
-   - **flows**: mapeie os fluxos de código das rotas que importam seguindo `references/code-flows.md`. Cada passo leva `file`, `lines`, `symbol`, `summary` e, quando usa um componente da infraestrutura, `node`. Não copie o código para o JSON: o `sd.py` lê o trecho do arquivo. Em `recommendations` de cada fluxo, registre passos novos (`steps`) e mudanças em passos existentes (`changes`) com o código sugerido.
+   - **flows**: mapeie os fluxos de código de **todas** as rotas e jobs do projeto (um fluxo por rota e método), seguindo `references/code-flows.md`: primeiro o inventário completo dos pontos de entrada, depois o rastreio de cada um. Cada passo leva `file`, `lines`, `symbol`, `summary` e, quando usa um componente da infraestrutura, `node`. Não copie o código para o JSON: o `sd.py` lê o trecho do arquivo. Em `recommendations` de cada fluxo, registre passos novos (`steps`) e mudanças em passos existentes (`changes`) com o código sugerido.
 5. Rode `python3 .system-design/sd.py cves` (varredura das dependências no OSV) e `python3 .system-design/sd.py build`.
-6. Rode `python3 .system-design/sd.py serve --open` em segundo plano. Resuma em 3 ou 4 linhas os principais limites, as CVEs críticas, os fluxos mapeados e as 3 recomendações de maior prioridade (de infraestrutura ou de código).
+6. Rode `python3 .system-design/sd.py serve --open` em segundo plano. Resuma em 3 ou 4 linhas os principais limites, as CVEs críticas, quantas rotas foram mapeadas (e quais ficaram de fora, se alguma) e as 3 recomendações de maior prioridade (de infraestrutura ou de código).
 
 ## Modo 2: desenhar o backend de uma aplicação nova
 
@@ -119,8 +119,9 @@ Use quando o usuário disser que o código mudou fora do agente, pedir para rele
 2. Rode `sd.py check`. Ele lista passos de fluxo cujo arquivo sumiu, cujo `symbol` saiu de `lines` ou cujo símbolo sumiu; varredura de CVEs ausente ou dependências alteradas desde o último `cves`; possíveis componentes fora do mapa (serviços do `docker-compose` e SDKs de infraestrutura conhecidos); e cópia da skill desatualizada.
 3. Rode `sd.py check --fix` para corrigir as faixas de linhas (ele grava no `map.json` e roda `build`). Os passos cujo símbolo sumiu você corrige à mão no `map.json`, refazendo o rastreio do fluxo conforme `references/code-flows.md`.
 4. Infraestrutura nova ou removida (os candidatos do `check` ou o que você achar lendo o projeto, como no passo 2 do Modo 1) passa pelo fluxo de proposta do Modo 3. Nunca grave mudança de infraestrutura direto no `map.json`. Correção só de descrição pode ir direto.
-5. Se o `check` disser que as dependências mudaram, rode `sd.py cves`.
-6. Rode `build` e diga ao usuário em 2 ou 3 linhas o que mudou.
+5. Refaça o inventário de rotas e jobs (`references/code-flows.md`, seção "Quais fluxos mapear"): mapeie as rotas novas que ainda não têm fluxo e tire de `flows` as que sumiram do código.
+6. Se o `check` disser que as dependências mudaram, rode `sd.py cves`.
+7. Rode `build` e diga ao usuário em 2 ou 3 linhas o que mudou.
 
 ## Fluxos de código
 
