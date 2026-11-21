@@ -89,40 +89,54 @@ O comando instala a skill nos agentes compatíveis que você usa. O repositório
 
 **Atualizar a skill.** Rode `npx skills add CarlosAllberto/system-design-skill` de novo. Ele baixa a versão mais recente do GitHub.
 
-**Levar a versão nova para um projeto já mapeado.** Peça ao agente "atualize o system design deste projeto", ou rode:
-
-```bash
-python3 <caminho da skill>/scripts/sd.py init
-python3 .system-design/sd.py build
-```
-
-O `init` só recopia o `sd.py` e a página. O mapa, os fluxos, o histórico e as CVEs são mantidos. O `build` avisa quando a cópia do projeto é mais antiga que a skill instalada, e `python3 .system-design/sd.py version` mostra a versão.
-
-**Reler o projeto depois que o código mudou fora do agente.** Peça ao agente para ressincronizar o mapa (Modo 5). Para fazer à mão, `python3 .system-design/sd.py check` lista o que divergiu do código e `check --fix` corrige as faixas de linhas dos passos dos fluxos. Mudança de infraestrutura continua passando pela proposta com aprovação. Depois de mudar dependências, rode `sd.py cves` de novo.
+**Levar a versão nova para um projeto já mapeado, ou reler o projeto depois que o código mudou fora do agente.** Rode `/system-design update`. O agente recopia o `sd.py` e a página (o mapa, os fluxos, o histórico e as CVEs são mantidos), confere o que divergiu do código, corrige as linhas dos fluxos, propõe as mudanças de infraestrutura para aprovação e refaz as CVEs se as dependências mudaram. `/system-design version` mostra a versão do projeto.
 
 ## Uso
 
-Peça ao agente algo como "mapeie o system design deste projeto". A skill tem 5 modos:
+Chame a skill com um comando. O agente roda os scripts por trás, você não precisa digitar `python3`:
 
-| Modo | Quando | O que acontece |
-| --- | --- | --- |
-| 1. Mapear um projeto existente | O projeto já tem código | A IA lê o código, faz todas as perguntas numa rodada só e escreve o `map.json` com nós, conexões, limites, recomendações e os fluxos de código das rotas principais |
-| 2. Desenhar um backend novo | App novo, sem backend | A arquitetura alvo e os fluxos de código planejados (com código inicial) viram uma proposta com tarefas de implementação |
-| 3. Propor antes de mudar o fluxo | Novo componente, banco, fila, cache, API externa, autenticação ou deploy | A IA registra a proposta e espera você aprovar na aba Atualização |
-| 4. Executar a atualização aprovada | Depois da aprovação | Cada item passa por `waiting`, `in_progress` e `done`; no fim o `finalize` atualiza o mapa |
-| 5. Ressincronizar com o código | O código mudou fora do agente, ou depois de atualizar a skill | A IA parte do mapa atual, roda o `check`, corrige as linhas dos fluxos, propõe as mudanças de infraestrutura para aprovação e refaz as CVEs se as dependências mudaram |
-
-Para mapear só o código de uma rota, peça algo como "mapeie o fluxo de código de api/users" ou "mostre o fluxo de código do POST /api/orders com recomendações".
-
-Comandos úteis, a partir da raiz do projeto:
-
-```bash
-python3 .system-design/sd.py serve --open
-python3 .system-design/sd.py cves
-python3 .system-design/sd.py build
-python3 .system-design/sd.py check
-python3 .system-design/sd.py version
+```text
+/system-design init                         mapeia o projeto (ou desenha o backend, se ele ainda não tiver)
+/system-design run                          abre a página do mapa no navegador
+/system-design update                       ressincroniza o mapa com o código e com a versão da skill
+/system-design status                       versão, atualização pendente e divergências do código
+/system-design flow POST /api/orders        mapeia o fluxo de código de uma rota
+/system-design propose adicionar Redis      propõe uma mudança de infraestrutura para você aprovar
+/system-design approve                      aprova a proposta (o botão da página faz o mesmo)
+/system-design apply                        implementa a atualização aprovada
+/system-design help                         lista todos os comandos
 ```
+
+| Comando | O que faz |
+| --- | --- |
+| `init` | Mapeia o projeto: lê o código, faz todas as perguntas numa rodada só e escreve o mapa com nós, conexões, limites, recomendações, CVEs e os fluxos das rotas principais. Num projeto sem backend, desenha a arquitetura alvo como proposta. Se o projeto já foi mapeado, faz o `update` |
+| `new [ideia]` | Desenha o backend de um app novo a partir da ideia |
+| `run` | Gera e abre a página ao vivo (`http://localhost:4747`) |
+| `update` | Ressincroniza o mapa com o código e leva a versão nova da skill para o projeto |
+| `status` | Mostra a versão, o estado da atualização pendente e as divergências do código |
+| `flow <rota>` | Mapeia ou atualiza o fluxo de código de uma rota. Acrescente "com recomendações" para receber sugestões de código |
+| `propose <mudança>` | Registra uma mudança de infraestrutura (banco, fila, cache, API externa, deploy) e espera você aprovar na aba Atualização |
+| `approve` / `reject [motivo]` / `discard` | Aprova, rejeita ou descarta a proposta |
+| `apply` | Implementa a atualização aprovada, marcando o progresso de cada item na página |
+| `check [--fix]` | Confere se o mapa está em dia com o código; `--fix` corrige as linhas dos fluxos |
+| `cves` | Procura vulnerabilidades conhecidas nas dependências |
+| `build` | Regenera a página e o resumo para a IA |
+| `version` | Mostra a versão da skill no projeto |
+| `help` | Lista os comandos |
+
+Os comandos aceitam apelidos em português (`mapear`, `abrir`, `atualizar`, `fluxo`, `propor`, `aprovar`, `implementar`, `ajuda`). Sem comando, `/system-design` mostra o `status`. Pedidos em linguagem natural continuam funcionando, como "mapeie o system design deste projeto" ou "mostre o fluxo de código do POST /api/orders com recomendações".
+
+Por trás dos comandos, a skill segue 5 modos:
+
+| Modo | Comando | O que acontece |
+| --- | --- | --- |
+| 1. Mapear um projeto existente | `init` | A IA lê o código, faz todas as perguntas numa rodada só e escreve o `map.json` |
+| 2. Desenhar um backend novo | `init` ou `new` | A arquitetura alvo e os fluxos de código planejados (com código inicial) viram uma proposta com tarefas de implementação |
+| 3. Propor antes de mudar o fluxo | `propose` | A IA registra a proposta e espera você aprovar na aba Atualização. Ela também faz isso sozinha antes de qualquer tarefa que mude a infraestrutura |
+| 4. Executar a atualização aprovada | `apply` | Cada item passa por `waiting`, `in_progress` e `done`; no fim o mapa é atualizado |
+| 5. Ressincronizar com o código | `update` | A IA parte do mapa atual, corrige as linhas dos fluxos, propõe as mudanças de infraestrutura para aprovação e refaz as CVEs se as dependências mudaram |
+
+Os comandos funcionam em agentes com slash commands de skills, como o Claude Code. Em outro agente, peça em texto ("system-design run") ou rode o CLI direto: `python3 .system-design/sd.py <comando>` (veja `sd.py --help`).
 
 Um exemplo para testar fica em [`examples/map.example.json`](examples/map.example.json). Para ver a aba de vulnerabilidades, copie também [`examples/cves.example.json`](examples/cves.example.json) para `.system-design/cves.json` (os dados são fictícios) e rode `build`.
 

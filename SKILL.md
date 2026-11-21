@@ -1,6 +1,7 @@
 ---
 name: system-design
-description: Plans and maintains the project's system design as a live map (n8n-style nodes and connections, limits, architecture recommendations and dependency CVEs) on a local page, plus code flows that trace each important route through its files (route, middleware, validation, controller, action, repository) with each file's code, a summary and optional code recommendations. Use it to map an existing system and to design the backend of a new app from scratch. Use it when the user asks for system design, an architecture map, a connection diagram, a code flow or request flow of a route (e.g. api/users), capacity limits, scaling or dependency vulnerabilities, when planning the backend of a new app, and before any task that changes the flow (new service, database, queue, cache, external API, authentication, deploy) to propose it and get approval on the map before implementing.
+argument-hint: "[init | run | update | status | flow <rota> | propose <mudança> | approve | apply | check | cves | help]"
+description: Plans and maintains the project's system design as a live map (n8n-style nodes and connections, limits, architecture recommendations and dependency CVEs) on a local page, plus code flows that trace each important route through its files (route, middleware, validation, controller, action, repository) with each file's code, a summary and optional code recommendations. Use it to map an existing system and to design the backend of a new app from scratch. Use it when the user asks for system design, an architecture map, a connection diagram, a code flow or request flow of a route (e.g. api/users), capacity limits, scaling or dependency vulnerabilities, when planning the backend of a new app, and before any task that changes the flow (new service, database, queue, cache, external API, authentication, deploy) to propose it and get approval on the map before implementing. Also use it when invoked as /system-design with a subcommand (init, run, update, status, flow, propose, approve, apply, check, cves, help).
 ---
 
 # System Design
@@ -20,7 +21,41 @@ Mantém a arquitetura do projeto em `.system-design/` como fonte da verdade, com
 | `.system-design/sd.py` | CLI do ciclo de vida (copiado pelo `init`) |
 | `.system-design/skill.json` | Versão da skill que gerou a cópia e o caminho do `sd.py` dela (gravado pelo `init`) |
 
-Todos os comandos abaixo rodam como `python3 .system-design/sd.py <comando>` a partir da raiz do projeto. No Windows o interpretador pode ser `python` em vez de `python3`. `sd.py version` mostra a versão da cópia do projeto.
+Por trás dos comandos da seção seguinte, os scripts rodam como `python3 .system-design/sd.py <comando>` a partir da raiz do projeto. No Windows o interpretador pode ser `python` em vez de `python3`. `sd.py version` mostra a versão da cópia do projeto.
+
+## Comandos (`/system-design <comando>`)
+
+O usuário não precisa digitar `python3 ...`. Ele chama a skill com um subcomando, por exemplo `/system-design init`, e você roda os scripts por trás. O texto depois de `/system-design` chega como argumento da skill: `$ARGUMENTS`.
+
+Como tratar o argumento:
+
+1. Pegue a primeira palavra do argumento, sem diferenciar maiúsculas, e procure na tabela abaixo (nome ou apelido). O resto do texto é o parâmetro do comando.
+2. Se não houver argumento, faça o mesmo que `status`.
+3. Se a primeira palavra não for um comando, trate o texto inteiro como um pedido em linguagem natural e escolha o modo certo, como se a skill tivesse sido chamada sem comando.
+4. Rode os scripts você mesmo e mostre ao usuário só o resultado, em poucas linhas e no idioma dele. Não peça para ele rodar comando nenhum.
+
+Os scripts: `<skill>/scripts/sd.py` é o `sd.py` da mesma pasta deste SKILL.md, e `sd.py` sozinho é a cópia do projeto, `.system-design/sd.py`, rodada a partir da raiz do projeto. Use `python3` (no Windows, `python` se `python3` não existir). Todo comando, menos `init`, `new` e `help`, precisa de `.system-design/`: se a pasta não existir, diga que o projeto ainda não foi mapeado e ofereça `/system-design init`.
+
+| Comando | Apelidos | O que fazer |
+|---|---|---|
+| `init` | `map`, `mapear` | Mapeia o projeto. Se `.system-design/` já existe, faça o `update`. Se o projeto não tem backend, siga o Modo 2; senão, o Modo 1 inteiro (com a rodada de perguntas da regra de ouro). |
+| `new [ideia]` | `design`, `novo` | Desenha o backend de um app novo (Modo 2). A ideia, se vier, é o ponto de partida das perguntas de `references/greenfield.md`. |
+| `run` | `open`, `serve`, `abrir` | Abre a página ao vivo: rode `sd.py build` e depois `sd.py serve --open` em segundo plano, e passe o endereço (padrão `http://localhost:4747`). Se a porta estiver ocupada por uma página já aberta, só passe o endereço. |
+| `update` | `sync`, `atualizar` | Ressincroniza o mapa com o código e com a versão instalada da skill (Modo 5 inteiro). |
+| `status` | `st` | Rode `sd.py version`, `sd.py status` e `sd.py check`. Resuma em até 5 linhas: versão, se há atualização pendente e em que estado, divergências do código e próximos comandos úteis. |
+| `flow <rota>` | `fluxo` | Mapeia ou atualiza o fluxo de código da rota (ex.: `flow POST /api/orders`), seguindo `references/code-flows.md`, e roda `sd.py build`. Se o texto pedir recomendações ("com recomendações"), preencha as do fluxo. Sem rota, liste os fluxos do `map.json` e pergunte qual. |
+| `propose <mudança>` | `propor` | Monta a proposta da mudança descrita (Modo 3, passos 1 a 3), roda `sd.py propose` e pede a revisão na aba Atualização. Não implemente nada. |
+| `approve` | `aprovar` | Rode `sd.py approve`. Pergunte se pode começar a implementar e, se sim, siga com `apply`. |
+| `reject [motivo]` | `rejeitar` | Rode `sd.py reject --reason "<motivo>"` e pergunte o que ajustar na proposta. |
+| `discard` | `descartar` | Confirme com o usuário e rode `sd.py discard`. |
+| `apply` | `implementar`, `executar` | Executa a atualização aprovada (Modo 4 inteiro). Se o status ainda for `proposed`, diga que falta aprovar (`/system-design approve` ou o botão da página). |
+| `check [--fix]` | `verificar` | Rode `sd.py check` (com `--fix` se pedido) e resuma as divergências. |
+| `cves` | `vulns` | Rode `sd.py cves` e depois `sd.py build`. Resuma as críticas e altas. |
+| `build` | `gerar` | Rode `sd.py build` e relate erros de validação, se houver. |
+| `version` | `versao`, `versão` | Rode `sd.py version` e diga se a skill instalada é mais nova. |
+| `help` | `ajuda`, `?` | Mostre esta tabela de comandos de forma resumida (comando e uma linha do que faz), sem rodar nada. |
+
+Os comandos que mudam a infraestrutura continuam seguindo as regras dos modos: `init` e `new` fazem as perguntas antes de criar, e `propose` para e espera a aprovação.
 
 ## Regra de ouro: perguntar antes de criar
 
