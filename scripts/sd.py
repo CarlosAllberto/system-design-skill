@@ -40,7 +40,7 @@ from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 HERE = Path(__file__).resolve().parent
 DIRNAME = ".system-design"
 STATES = ("waiting", "in_progress", "done", "blocked")
